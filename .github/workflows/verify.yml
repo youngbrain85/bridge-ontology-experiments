@@ -1,0 +1,21 @@
+name: Offline verification
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: pip
+          cache-dependency-path: requirements-geometry.txt
+      - run: python -m pip install -r requirements-geometry.txt
+      - run: python -B -X utf8 scripts/verify_release.py
+      - run: python -B -X utf8 -m unittest discover -s . -p test_providers.py
+      - run: python -B -X utf8 -m unittest discover -s verification -p "test_*.py"
+      - run: python -B -X utf8 -m unittest discover -s backend -p "test_*.py"

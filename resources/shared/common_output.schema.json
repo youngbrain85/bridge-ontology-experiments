@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bridge-ontology-experiment:generic-model-description:0.1.0",
+  "title": "Generic model description for identical generation conditions",
+  "description": "Intermediate model description only. No domain classes, relation vocabulary, geometric answers, or domain validation rules are prescribed.",
+  "type": "object",
+  "required": ["schema_version", "model_id", "entities", "relations", "unknowns"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "model_id": {"type": "string", "minLength": 1},
+    "coordinate_frames": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/coordinateFrame"}
+    },
+    "entities": {"type": "array", "items": {"$ref": "#/$defs/entity"}},
+    "relations": {"type": "array", "items": {"$ref": "#/$defs/relation"}},
+    "unknowns": {"type": "array", "items": {"$ref": "#/$defs/unknown"}},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "stringOrNull": {"type": ["string", "null"]},
+    "vector4": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {"type": "number"}
+    },
+    "matrix4": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {"$ref": "#/$defs/vector4"},
+      "description": "Four rows of a homogeneous transform, using column vectors. Matrix validity and geometry are not checked by this schema."
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["source_id", "locator", "basis"],
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {"type": "string", "minLength": 1},
+        "locator": {"$ref": "#/$defs/stringOrNull"},
+        "basis": {"type": "string", "minLength": 1},
+        "quoted_text": {"$ref": "#/$defs/stringOrNull"},
+        "applies_to": {"$ref": "#/$defs/stringOrNull"}
+      },
+      "description": "Identify the supplied source and location. basis explains direct observation or inference in free text; applies_to may name a JSON Pointer."
+    },
+    "evidenceList": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+    "coordinateFrame": {
+      "type": "object",
+      "required": ["id", "description", "length_unit", "source_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "length_unit": {"$ref": "#/$defs/stringOrNull"},
+        "parent_frame_id": {"$ref": "#/$defs/stringOrNull"},
+        "transform_to_parent": {"anyOf": [{"$ref": "#/$defs/matrix4"}, {"type": "null"}]},
+        "source_evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "primitive": {
+      "type": "object",
+      "required": ["kind", "parameters", "source_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "parameters": {
+          "type": "object", "additionalProperties": true,
+          "description": "Free JSON parameters, with explicit units and frame references where relevant. This is not a fixed CAD-engine grammar."
+        },
+        "source_evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "geometry": {
+      "type": "object",
+      "required": ["representation", "primitives"],
+      "additionalProperties": false,
+      "properties": {
+        "representation": {"type": "string", "minLength": 1},
+        "primitives": {"type": "array", "items": {"$ref": "#/$defs/primitive"}},
+        "construction_notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "pose": {
+      "type": "object",
+      "required": ["frame_id", "transform"],
+      "additionalProperties": false,
+      "properties": {
+        "frame_id": {"$ref": "#/$defs/stringOrNull"},
+        "transform": {"anyOf": [{"$ref": "#/$defs/matrix4"}, {"type": "null"}]},
+        "source_evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": ["id", "label", "kind", "geometry", "pose", "source_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "label": {"$ref": "#/$defs/stringOrNull"},
+        "kind": {"$ref": "#/$defs/stringOrNull"},
+        "geometry": {"anyOf": [{"$ref": "#/$defs/geometry"}, {"type": "null"}]},
+        "pose": {"anyOf": [{"$ref": "#/$defs/pose"}, {"type": "null"}]},
+        "source_evidence": {"$ref": "#/$defs/evidenceList"},
+        "properties": {"type": "object", "additionalProperties": true}
+      },
+      "description": "kind is a free label chosen by the generator. No domain vocabulary is supplied by this schema."
+    },
+    "relation": {
+      "type": "object",
+      "required": ["subject_id", "predicate", "object_id", "source_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_id": {"type": "string", "minLength": 1},
+        "predicate": {"type": "string", "minLength": 1},
+        "object_id": {"type": "string", "minLength": 1},
+        "source_evidence": {"$ref": "#/$defs/evidenceList"},
+        "properties": {"type": "object", "additionalProperties": true}
+      },
+      "description": "predicate is free text. This schema does not check reference integrity or the truth of a relationship."
+    },
+    "unknown": {
+      "type": "object",
+      "required": ["target", "field", "reason", "source_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "target": {"$ref": "#/$defs/stringOrNull"},
+        "field": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "source_evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    }
+  }
+}

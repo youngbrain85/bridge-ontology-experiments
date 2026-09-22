@@ -1,0 +1,34 @@
+{
+  "version": "0.4.0",
+  "provider": "openai",
+  "model": "gpt-6-astra",
+  "model_version_note": "Versioned research catalog; live account access is untested. English synthetic demonstration edition.",
+  "reasoning_effort": "high",
+  "thinking_budget_tokens": null,
+  "auto_continue_limit": 2,
+  "max_output_tokens": 128000,
+  "temperature": null,
+  "top_p": null,
+  "repetitions": 1,
+  "randomization_seed": 20260906,
+  "timeout_seconds": 1800,
+  "study_role": "development_pilot",
+  "knowledge_source": "resources/ontology/C_ontology_context_v01.json",
+  "common_instruction": "resources/shared/minimal_v1/common_instruction.md",
+  "output_schema": "resources/shared/minimal_v1/common_output.schema.json",
+  "geometry_contract": "resources/shared/minimal_v1/geometry_contract.md",
+  "backend_dir": "backend",
+  "cases": [
+    {
+      "case_id": "SYNTHETIC_DEMO",
+      "scope": "resources/cases/SYNTHETIC_DEMO/scope.md",
+      "text": "resources/cases/SYNTHETIC_DEMO/source_text.json",
+      "images": [
+        "resources/cases/SYNTHETIC_DEMO/images/overview.png"
+      ],
+      "provenance": "resources/cases/SYNTHETIC_DEMO/provenance.json",
+      "used_for_ontology_development": false
+    }
+  ],
+  "input_protocol_version": "deck_assembly_minimal_en_v1"
+}

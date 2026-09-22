@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0-en.1",
+  "source_version": "0.1.0",
+  "language": "en",
+  "source_catalog_sha256": "41b7a58682a445bb9266b4d460c29a49d86dc536735e06963ea5f1bb2958ba02",
+  "source_context_sha256": "d300befcb7a504106c12627b853656421176e46e11f4e2af90a849a8379e8ab7",
+  "fact_count": 880,
+  "classes": 80,
+  "properties": 46,
+  "reference_point_roles": 3,
+  "generation_rules": 38,
+  "aliases_original": 69,
+  "aliases_translated": 69,
+  "rdf_triples_original": 7142,
+  "rdf_triples_translated": 7142,
+  "checks": {
+    "fact_ids_and_order_preserved": true,
+    "subject_predicate_and_object_kind_preserved": true,
+    "all_iri_objects_preserved": true,
+    "evidence_basis_codes_preserved": true,
+    "alias_count_per_class_preserved": true,
+    "catalog_and_context_facts_identical": true,
+    "rdf_serializations_isomorphic": true,
+    "no_hangul_in_english_files": true
+  },
+  "limitations": [
+    "This is a separately versioned English research input, not a byte-identical reproduction of the Korean input.",
+    "Structural and projection checks do not prove natural-language semantic equivalence or equal model behavior.",
+    "Original Korean aliases were translated one for one, preserving order and count. English aliases cannot match the original Korean drawing strings in the same way.",
+    "No OWL reasoning, SHACL validation, model evaluation or provider call was performed."
+  ],
+  "predicate_counts": {
+    "rdf:type": 168,
+    "rdfs:label": 129,
+    "skos:definition": 129,
+    "rdfs:subClassOf": 79,
+    "skos:altLabel": 69,
+    "rdfs:domain": 46,
+    "rdfs:range": 46,
+    "owl:inverseOf": 1,
+    "rdfs:subPropertyOf": 4,
+    "owl:disjointWith": 4,
+    "ruleCondition": 38,
+    "ruleAction": 38,
+    "relatedConcept": 129
+  }
+}

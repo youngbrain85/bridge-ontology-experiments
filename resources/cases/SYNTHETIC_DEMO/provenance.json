@@ -1,0 +1,11 @@
+{
+  "case_id": "SYNTHETIC_DEMO",
+  "input_protocol_version": "deck_assembly_minimal_en_v1",
+  "study_role": "development_pilot",
+  "source_type": "hand_authored_synthetic_fixture",
+  "contains_private_project_data": false,
+  "engineering_reference": false,
+  "description": "Two rectangular components with explicitly stated dimensions, intended only to verify input preparation and display workflows.",
+  "images": [{"path": "images/overview.png", "source": "images/overview.svg", "drawing_id": "SYNTHETIC-001", "views": ["plan", "section A-A"]}],
+  "created": "2026-09-22"
+}

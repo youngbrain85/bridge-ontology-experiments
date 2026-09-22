@@ -1,0 +1,12 @@
+{
+  "drawing_id": "SYNTHETIC-001",
+  "source": "Hand-authored software demonstration; no private project data",
+  "length_unit": "mm",
+  "records": [
+    {"view": "plan", "text": "Deck slab: length 3000, width 2000"},
+    {"view": "section A-A", "text": "Deck slab thickness: 200"},
+    {"view": "plan", "text": "Base plate: length 500, width 400"},
+    {"view": "section A-A", "text": "Base plate thickness: 40; lower face rests on deck top"},
+    {"view": "plan", "text": "Base plate centred along deck length; near transverse edge offset 100 from deck edge"}
+  ]
+}

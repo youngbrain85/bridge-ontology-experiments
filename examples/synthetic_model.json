@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.2.0",
+  "model_id": "HAND_AUTHORED_SOFTWARE_FIXTURE",
+  "description": "A hand-authored converter smoke-test fixture, not an AI output or engineering reference.",
+  "coordinate_frames": [{"id": "demo", "length_unit": "mm", "parent_frame_id": null, "transform_to_parent": [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]}],
+  "entities": [
+    {
+      "id": "deck_slab",
+      "label": "Synthetic deck slab",
+      "geometry": {"primitives": [{"kind": "box", "parameters": {"length_unit": "mm", "extents": [3000,2000,200]}}]},
+      "pose": {"frame_id": "demo", "transform": [[1,0,0,1500],[0,1,0,1000],[0,0,1,100],[0,0,0,1]]}
+    },
+    {
+      "id": "base_plate",
+      "label": "Synthetic base plate",
+      "geometry": {"primitives": [{"kind": "box", "parameters": {"length_unit": "mm", "extents": [500,400,40]}}]},
+      "pose": {"frame_id": "demo", "transform": [[1,0,0,1500],[0,1,0,300],[0,0,1,220],[0,0,0,1]]}
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+<rect width="1400" height="900" fill="white"/>
+<style>text{font-family:Arial,sans-serif;fill:#142d40;font-size:23px}.title{font-size:32px;font-weight:bold}.small{font-size:19px}.dim{stroke:#29445b;stroke-width:2;fill:none}.object{stroke:#142d40;stroke-width:3;fill:#eaf0f4}.plate{stroke:#142d40;stroke-width:3;fill:#b9d6dd}</style>
+<text x="65" y="65" class="title">SYNTHETIC-001 | Deck and base plate</text>
+<text x="65" y="100" class="small">Software demonstration only. Not a real bridge design. All dimensions in mm.</text>
+<text x="65" y="162">PLAN</text>
+<rect class="object" x="100" y="245" width="600" height="400"/>
+<rect class="plate" x="350" y="265" width="100" height="80"/>
+<text x="235" y="505">Deck slab</text>
+<line class="dim" x1="100" y1="230" x2="100" y2="180"/><line class="dim" x1="700" y1="230" x2="700" y2="180"/>
+<line class="dim" x1="100" y1="195" x2="700" y2="195"/>
+<path class="dim" d="M90 205 L110 185 M690 205 L710 185"/>
+<text x="365" y="182">3000</text>
+<line class="dim" x1="710" y1="245" x2="780" y2="245"/><line class="dim" x1="710" y1="645" x2="780" y2="645"/>
+<line class="dim" x1="760" y1="245" x2="760" y2="645"/>
+<path class="dim" d="M750 255 L770 235 M750 655 L770 635"/>
+<text x="790" y="450" transform="rotate(-90 790 450)">2000</text>
+<path class="dim" d="M450 300 L560 270 L790 270"/><text x="795" y="278">Base plate 500 x 400</text>
+<path class="dim" d="M350 265 L260 235 L70 235"/><text x="65" y="219" class="small">Edge offset 100</text>
+<line x1="400" y1="245" x2="400" y2="645" stroke="#567084" stroke-width="2" stroke-dasharray="10 8"/>
+<text x="383" y="685">A</text><text x="383" y="229">A</text>
+<text x="65" y="740" class="small">Plate centred along the 3000 mm deck length.</text>
+<text x="865" y="430">SECTION A-A</text>
+<rect class="object" x="865" y="580" width="400" height="40"/>
+<rect class="plate" x="885" y="572" width="80" height="8"/>
+<path class="dim" d="M970 575 L1045 520 L1270 520"/><text x="1005" y="505" class="small">Plate thickness 40</text>
+<path class="dim" d="M1210 605 L1240 672 L1310 672"/><text x="985" y="713" class="small">Deck thickness 200</text>
+<text x="865" y="765" class="small">Plate lower face rests on deck top.</text>
+<line x1="65" y1="815" x2="1335" y2="815" stroke="#9aadb9"/>
+<text x="65" y="851" class="small">Only the slab and base plate are in scope. No cables, bearings, or reinforcement are specified.</text>
+</svg>
