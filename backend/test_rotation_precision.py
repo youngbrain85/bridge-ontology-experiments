@@ -206,6 +206,19 @@ class RotationPrecisionTests(unittest.TestCase):
         report, _ = self.conversion(value, minimal_schema=True)
         self.assertEqual(report["status"], "ok", report)
 
+    def test_schema_with_external_reference_is_refused_without_retrieval(self):
+        schema = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
+                  "properties": {"entities": {"$ref": "https://example.invalid/never-fetched.json"}}}
+        with tempfile.TemporaryDirectory(prefix="external_schema_") as temporary:
+            directory = Path(temporary)
+            (directory / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+            (directory / "input.json").write_text(json.dumps(model([box()])), encoding="utf-8")
+            report = convert_model(directory / "input.json", directory / "converted", directory / "schema.json")
+        self.assertEqual(report["status"], "failed", report)
+        self.assertEqual(report["global_errors"],
+                         ["External schema reference is disabled: 'https://example.invalid/never-fetched.json'"])
+        self.assertNotIn("schema_validation", report)
+
     def test_failed_world_composition_does_not_log_repeated_frame_corrections(self):
         frames = [frame(), frame("large", translation=(1e308, 0, 0)),
                   frame("overflow_child", ROUND_45, (1e308, 0, 0), parent="large")]

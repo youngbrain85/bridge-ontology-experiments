@@ -1,5 +1,11 @@
 # Changelog
 
+## Geometry backend schema validation — 2026-09-23
+
+- Resolve JSON Schema references through the `referencing` registry on jsonschema 4.18 and later, keeping the legacy `RefResolver` path only for the pinned jsonschema 4.4 environment. The previous code passed `resolver=` to newer releases, whose compatibility shim leaks `$id` scopes during the meta-schema pass, so every schema-validated conversion reported `failed` with a misleading "External schema reference is disabled" message.
+- External schema references are still refused offline on both paths, now with a regression test; bundled Draft 2020-12 vocabulary meta-schemas resolve without any network access.
+- The geometry backend version is unchanged; conversion output for valid input is byte-identical.
+
 ## English edition — 2026-09-22
 
 - Publish the latest local source snapshot: experiment engine 0.4.0, web application 0.2.5, geometry backend 0.1.2, including run visibility updates.

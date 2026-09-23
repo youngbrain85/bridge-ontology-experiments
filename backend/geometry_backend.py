@@ -52,22 +52,69 @@ class GeometryInputError(ValueError):
     pass
 
 
+def _jsonschema_uses_referencing() -> bool:
+    """True from jsonschema 4.18, where validators take ``registry=`` and ``resolver=`` is a broken shim."""
+    import importlib.metadata
+
+    try:
+        version = importlib.metadata.version("jsonschema")
+        parts = [int(re.match(r"\d+", part).group()) for part in version.split(".")[:2]]
+    except (importlib.metadata.PackageNotFoundError, AttributeError, ValueError):
+        return False
+    return tuple(parts) >= (4, 18)
+
+
+def schema_errors(validator, instance) -> list:
+    """Collect validation errors; surface a refused external reference as its own message."""
+    try:
+        return list(validator.iter_errors(instance))
+    except Exception as exc:  # the referencing layer wraps the refusal raised by the retriever
+        cause = exc
+        while cause is not None:
+            if isinstance(cause, GeometryInputError):
+                raise cause from None
+            cause = cause.__cause__ or cause.__context__
+        raise
+
+
 def local_schema_validator(schema: dict):
-    """Keep all schema references local, including URN fragment refs on jsonschema 4.4.
+    """Keep all schema references local; model conversion never fetches schemas.
 
-    Older RefResolver urljoin handling turns a URN plus '#/$defs/...' into
-    a fragment-only URL. Registering the document at the empty URI as well
-    as its declared $id preserves the schema bytes and resolves that case.
-    Remote references are rejected; model conversion never fetches schemas.
+    jsonschema >= 4.18 resolves references through the ``referencing`` library.
+    The bundled Draft 2020-12 vocabulary meta-schemas stay available, and any
+    reference that is not local to the document or those bundled resources is
+    rejected instead of retrieved. The legacy ``RefResolver`` path is kept for
+    the pinned jsonschema 4.4 environment: its urljoin handling turns a URN plus
+    '#/$defs/...' into a fragment-only URL, so the document is also registered
+    at the empty URI. Passing ``resolver=`` to newer releases leaks ``$id``
+    scopes during the meta-schema pass and must not be used there.
     """
-    from jsonschema import Draft202012Validator, RefResolver
+    from jsonschema import Draft202012Validator
 
-    class LocalOnlyResolver(RefResolver):
-        def resolve_remote(self, uri):
-            raise GeometryInputError(f"External schema reference is disabled: {uri!r}")
+    if not _jsonschema_uses_referencing():
+        from jsonschema import RefResolver
 
-    resolver = LocalOnlyResolver.from_schema(schema, store={"": schema})
-    return Draft202012Validator(schema, resolver=resolver)
+        class LocalOnlyResolver(RefResolver):
+            def resolve_remote(self, uri):
+                raise GeometryInputError(f"External schema reference is disabled: {uri!r}")
+
+        resolver = LocalOnlyResolver.from_schema(schema, store={"": schema})
+        return Draft202012Validator(schema, resolver=resolver)
+
+    from referencing import Registry, Resource
+    from referencing.jsonschema import DRAFT202012
+
+    def refuse_retrieval(uri):
+        raise GeometryInputError(f"External schema reference is disabled: {uri!r}")
+
+    resource = Resource.from_contents(schema, default_specification=DRAFT202012)
+    registry = Registry(retrieve=refuse_retrieval).with_resource("", resource)
+    schema_id = schema.get("$id")
+    if isinstance(schema_id, str) and schema_id:
+        registry = registry.with_resource(schema_id, resource)
+    # The validator combines the bundled specification meta-schemas into this
+    # registry itself, so Draft 2020-12 vocabulary references resolve offline.
+    return Draft202012Validator(schema, registry=registry)
 
 
 def unit_factor(unit: Any, context: str) -> float:
@@ -454,12 +501,12 @@ def convert_model(input_path, output_dir, schema_path=None) -> Dict[str, Any]:
             schema = json.loads(Path(schema_path).read_text(encoding="utf-8-sig"))
             # Meta-schema resources bundled with jsonschema stay available in
             # the resolver store, but neither validation pass may use a URL fetch.
-            meta_errors = list(local_schema_validator(Draft202012Validator.META_SCHEMA).iter_errors(schema))
+            meta_errors = schema_errors(local_schema_validator(Draft202012Validator.META_SCHEMA), schema)
             if meta_errors:
                 raise GeometryInputError("Invalid common model schema: " + meta_errors[0].message)
-            schema_errors = sorted(local_schema_validator(schema).iter_errors(model), key=lambda error: str(list(error.absolute_path)))
-            if schema_errors:
-                raise GeometryInputError("Common model schema failed: " + "; ".join(str(list(error.absolute_path)) + ": " + error.message for error in schema_errors[:20]))
+            instance_errors = sorted(schema_errors(local_schema_validator(schema), model), key=lambda error: str(list(error.absolute_path)))
+            if instance_errors:
+                raise GeometryInputError("Common model schema failed: " + "; ".join(str(list(error.absolute_path)) + ": " + error.message for error in instance_errors[:20]))
             report["schema_validation"] = "passed"
         else:
             report["schema_validation"] = "not_requested"
