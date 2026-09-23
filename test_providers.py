@@ -1,6 +1,7 @@
 """Offline provider adapter tests. No live requests and no real credentials."""
 import base64
 import copy
+import http.client
 import io
 import json
 import os
@@ -277,6 +278,21 @@ class ProviderTests(unittest.TestCase):
         with patch.object(p.urllib.request, "build_opener", return_value=Opener()):
             with self.assertRaises(p.TransportError) as caught:
                 p.send_request("openai", b"{}", SECRET, 1, "client_offline")
+        self.assertEqual(caught.exception.category, "transport_error_outcome_unknown")
+        self.assertNotIn(SECRET, str(caught.exception))
+
+    def test_connection_dropped_while_reading_body_is_a_transport_error(self):
+        class TruncatedReply:
+            status = 200
+            headers = {"request-id": "offline_truncated"}
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): raise http.client.IncompleteRead(SECRET.encode())
+        class Opener:
+            def open(self, *args, **kwargs): return TruncatedReply()
+        with patch.object(p.urllib.request, "build_opener", return_value=Opener()):
+            with self.assertRaises(p.TransportError) as caught:
+                p.send_request("anthropic", b"{}", SECRET, 1, "client_offline")
         self.assertEqual(caught.exception.category, "transport_error_outcome_unknown")
         self.assertNotIn(SECRET, str(caught.exception))
 
