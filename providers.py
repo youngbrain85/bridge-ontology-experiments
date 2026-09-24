@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import http.client
 import json
 import math
 from pathlib import Path
@@ -315,5 +316,8 @@ def send_request(provider, payload_bytes, key, timeout, request_id):
         code = error.code
         error.close()
         raise TransportError("http_error", code, metadata_id) from None
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+    except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError):
+        # HTTPException covers a connection that drops mid-body (IncompleteRead) or
+        # a malformed status line; the request may have been billed, so its outcome
+        # is unknown exactly like a socket error.
         raise TransportError("transport_error_outcome_unknown") from None
