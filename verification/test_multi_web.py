@@ -383,6 +383,31 @@ class MultiWebTests(unittest.TestCase):
         self.assertIsNone(excluded_status["job"])
 
 
+    def test_14_failed_preparation_releases_the_batch_name_and_removes_only_its_own_experiment_folders(self):
+        body = {"batch_id": "newbatch", "models": copy.deepcopy(SELECTIONS), "repetitions": 1, "max_output_tokens": 4096, "auto_continue_limit": 2}
+        older = self.package / "experiments/newbatch_m02"
+        self.put(older / "config.json", {"offline_fixture_only": True})
+        self.fail_models.add(None)
+        self.assertEqual(self.request("POST", "/api/prepare", body)[0], 202)
+        self.assertTrue(self.wait_for(lambda: len(self.processes) == 1 and self.processes[0].stdin.closed))
+        orphan = self.package / "experiments/newbatch_m01"
+        self.put(orphan / "config.json", {"offline_fixture_only": True})
+        self.assertTrue((self.package / "batches/newbatch.reserved").is_file())
+        self.processes[0].release.set()
+        self.assertTrue(self.wait_for(lambda: not self.app.is_busy()))
+        self.assertEqual(self.app.preparation["status"], "failed")
+        self.assertFalse((self.package / "batches/newbatch.reserved").exists())
+        self.assertFalse(orphan.exists())
+        self.assertTrue((older / "config.json").is_file())
+        self.fail_models.clear()
+        self.assertEqual(self.request("POST", "/api/prepare", body)[0], 202)
+        self.assertTrue(self.wait_for(lambda: len(self.processes) == 2 and self.processes[1].stdin.closed))
+        self.processes[1].release.set()
+        self.assertTrue(self.wait_for(lambda: not self.app.is_busy()))
+        self.assertEqual(self.app.preparation["status"], "completed")
+        self.assertTrue((older / "config.json").is_file())
+
+
 class WorkerAndBatchTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="offline_multi_worker_", dir=HERE)

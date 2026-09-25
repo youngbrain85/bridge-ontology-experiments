@@ -1,5 +1,11 @@
 # Changelog
 
+## Input handling and batch preparation — 2026-09-25
+
+- Determine each drawing's media type from a fixed extension table (`.png`, `.jpg`/`.jpeg`, `.webp`) instead of the host `mimetypes` registry. Python 3.9 on Windows has no `.webp` entry, so preparing an experiment with a WEBP drawing failed after the experiment folder was created, with a message that did not name the cause. PNG and JPEG inputs are unaffected and produce identical requests.
+- Release the batch name after a failed preparation: the web application now removes the `batches/<id>.reserved` marker and only the `experiments/<id>_mNN` folders that the failed preparation itself created. Previously the name stayed "already in use" forever and partial experiment folders were left behind. Successful preparations and pre-existing folders are untouched.
+- Experiments prepared before this change keep their frozen copy of `experiment.py`.
+
 ## Geometry backend schema validation — 2026-09-23
 
 - Resolve JSON Schema references through the `referencing` registry on jsonschema 4.18 and later, keeping the legacy `RefResolver` path only for the pinned jsonschema 4.4 environment. The previous code passed `resolver=` to newer releases, whose compatibility shim leaks `$id` scopes during the meta-schema pass, so every schema-validated conversion reported `failed` with a misleading "External schema reference is disabled" message.
