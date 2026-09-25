@@ -25,6 +25,7 @@ EXECUTION_STATES = {
     "invalid_api_response", "provider_incomplete", "provider_failed", "refused",
     "unexpected_tool_or_output", "invalid_model_json", "protocol_deviation",
     "clarification_requested", "clarification_limit_reached", "stopped_before_continuation",
+    "interrupted_before_continuation",
 }
 EXECUTION_STATES.update({"http_error", "transport_error_outcome_unknown", "interrupted_outcome_unknown",
                          "invalid_api_response", "invalid_model_json", "refused", "unexpected_tool_or_output",

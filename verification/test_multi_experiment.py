@@ -404,5 +404,52 @@ class RunnerTests(unittest.TestCase):
         self.no_paid.assert_not_called()
 
 
+    def test_18_unsent_turn_folder_from_a_dead_runner_does_not_block_the_slot(self):
+        exp = self.prepare()
+        run = self.first(exp)
+        # A runner that died between creating turn_00 and writing attempt.json never sent a request.
+        (run / "turns/turn_00").mkdir(parents=True)
+        (run / "turns/turn_00/request.json").write_bytes(b"{}")
+        (run / "request.json").write_bytes(b"{}")
+        transport = mock.Mock(return_value=response())
+        result = self.execute(exp, transport, limit=1)
+        self.assertEqual((result["new_calls"], result["new_api_turns"], transport.call_count), (1, 1, 1))
+        saved = engine.read_json(run / "result.json")
+        self.assertEqual((saved["status"], saved["api_turns"]), ("completed", 1))
+        self.assertTrue((run / "turns/turn_00/attempt.json").is_file())
+        self.assertEqual((run / "request.json").read_bytes(), (run / "turns/turn_00/request.json").read_bytes())
+        self.no_paid.assert_not_called()
+
+    def test_19_recorded_final_turn_is_promoted_when_the_runner_died_before_finish_slot(self):
+        exp = self.prepare()
+        first, second = self.first(exp), self.first(exp, 1)
+        with mock.patch.object(engine, "finish_slot", side_effect=RuntimeError("offline crash")):
+            with self.assertRaisesRegex(RuntimeError, "offline crash"):
+                self.execute(exp, mock.Mock(return_value=response()))
+        self.assertTrue((first / "attempt.json").is_file())
+        self.assertFalse((first / "result.json").exists())
+        self.assertTrue((first / "turns/turn_00/model_input.json").is_file())
+        with mock.patch.object(engine, "providers", wraps=engine.providers) as wrapped:
+            wrapped.append_continuation.side_effect = RuntimeError("offline crash")
+            transport = mock.Mock(return_value=response(text=json.dumps(QUESTION)))
+            with self.assertRaisesRegex(RuntimeError, "offline crash"):
+                self.execute(exp, transport, limit=1)
+        self.assertEqual(transport.call_count, 1)
+        self.assertFalse((second / "result.json").exists())
+        transport = mock.Mock(return_value=response())
+        resumed = self.execute(exp, transport, limit=1)
+        self.assertEqual((resumed["new_calls"], resumed["new_api_turns"], transport.call_count), (1, 1, 1))
+        saved = engine.read_json(first / "result.json")
+        self.assertEqual((saved["status"], saved["api_turns"], saved["closed_on_resume"]), ("completed", 1, True))
+        self.assertEqual(engine.read_json(first / "model_input.json"), MODEL)
+        self.assertEqual(saved["model_sha256"], engine.sha(first / "model_input.json"))
+        saved = engine.read_json(second / "result.json")
+        self.assertEqual((saved["status"], saved["api_turns"], saved["continuation_count"], saved["closed_on_resume"]),
+                         ("interrupted_before_continuation", 1, 0, True))
+        self.assertFalse((second / "model_input.json").exists())
+        self.assertTrue((second / "raw_response.txt").is_file())
+        self.no_paid.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
