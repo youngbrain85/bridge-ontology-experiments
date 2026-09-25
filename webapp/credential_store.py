@@ -98,8 +98,20 @@ def _decrypt(provider, encrypted):
     return key
 
 
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+# IsReparseTagNameSurrogate: set for reparse points that redirect the path, such as symbolic links,
+# junctions, and mount points. Cloud-file placeholders (OneDrive Files On-Demand) and deduplicated
+# files are also reparse points but resolve in place, so they must not disable the store.
+REPARSE_TAG_NAME_SURROGATE = 0x20000000
+
+
 def _linked(info):
-    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+    if stat.S_ISLNK(info.st_mode):
+        return True
+    if not getattr(info, "st_file_attributes", 0) & FILE_ATTRIBUTE_REPARSE_POINT:
+        return False
+    tag = getattr(info, "st_reparse_tag", None)
+    return tag is None or bool(tag & REPARSE_TAG_NAME_SURROGATE)
 
 
 class CredentialStore:

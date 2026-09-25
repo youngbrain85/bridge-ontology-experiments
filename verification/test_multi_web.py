@@ -12,6 +12,7 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 import tempfile
 import threading
@@ -86,6 +87,24 @@ class FakeProcess:
         return self.returncode
 
 
+class OfflineCredentialStore:
+    """In-memory stand-in for the Windows DPAPI store on other hosts; writes nothing to disk."""
+    def __init__(self):
+        self.keys = {}
+
+    def status(self):
+        return {p: {"saved": p in self.keys, "available": p in self.keys, "error": None} for p in ("openai", "anthropic")}
+
+    def get(self, provider):
+        return self.keys.get(provider)
+
+    def save_many(self, keys):
+        self.keys.update({p: local_common.normalized_key(v) for p, v in keys.items()})
+
+    def delete(self, provider):
+        self.keys.pop(provider, None)
+
+
 class MultiWebTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="offline_multi_web_", dir=HERE)
@@ -118,7 +137,9 @@ class MultiWebTests(unittest.TestCase):
         self.put(batch_file, self.batch)
         batch_file.with_suffix(".sha256").write_text(engine.sha(batch_file), encoding="ascii")
         self.put(self.package / "config.json", {"cases": [{"case_id": "OFFLINE"}]})
-        self.app = app_service.Application(self.package, app_dir=APP, jobs_dir=self.root / "jobs")
+        # The real store needs Windows DPAPI; elsewhere an in-memory store keeps the launch path testable.
+        store = None if sys.platform == "win32" else OfflineCredentialStore()
+        self.app = app_service.Application(self.package, app_dir=APP, jobs_dir=self.root / "jobs", credential_store=store)
         self.processes = []
         self.fail_models = set()
         self.env_guard = mock.patch.dict(os.environ, {"PATH": "OFFLINE_SAFE_PATH", "OPENAI_API_KEY": "AMBIENT_KEY_SENTINEL", "ANTHROPIC_API_KEY": "AMBIENT_CLAUDE_SENTINEL", "OTHER_TOKEN": "AMBIENT_TOKEN_SENTINEL"}, clear=True)
@@ -406,6 +427,27 @@ class MultiWebTests(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: not self.app.is_busy()))
         self.assertEqual(self.app.preparation["status"], "completed")
         self.assertTrue((older / "config.json").is_file())
+
+
+    def test_15_reparse_points_that_do_not_redirect_the_path_keep_the_store_usable(self):
+        import credential_store
+        directory, link = stat.S_IFDIR, stat.S_IFLNK
+        cases = [
+            (types.SimpleNamespace(st_mode=directory), False),
+            (types.SimpleNamespace(st_mode=link), True),
+            # Cloud placeholder (OneDrive Files On-Demand) and deduplicated file: reparse points that resolve in place.
+            (types.SimpleNamespace(st_mode=directory, st_file_attributes=0x400, st_reparse_tag=0x9000001A), False),
+            (types.SimpleNamespace(st_mode=directory, st_file_attributes=0x410, st_reparse_tag=0x9000301A), False),
+            (types.SimpleNamespace(st_mode=stat.S_IFREG, st_file_attributes=0x400, st_reparse_tag=0x80000013), False),
+            # Junction/mount point and symbolic link tags are name surrogates.
+            (types.SimpleNamespace(st_mode=directory, st_file_attributes=0x400, st_reparse_tag=0xA0000003), True),
+            (types.SimpleNamespace(st_mode=directory, st_file_attributes=0x400, st_reparse_tag=0xA000000C), True),
+            # A reparse point whose tag is unavailable stays rejected.
+            (types.SimpleNamespace(st_mode=directory, st_file_attributes=0x400), True),
+        ]
+        for info, expected in cases:
+            with self.subTest(info=vars(info)):
+                self.assertEqual(credential_store._linked(info), expected)
 
 
 class WorkerAndBatchTests(unittest.TestCase):
