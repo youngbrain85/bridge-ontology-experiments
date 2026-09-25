@@ -4,6 +4,9 @@ A local research application for studying how ontology representations affect th
 
 **English edition, September 22, 2026.** Based on experiment engine 0.4.0, web application 0.2.5, and geometry backend 0.1.2. This edition includes the latest local source snapshot and the September 17 diagnostic findings. It ships with an explicitly synthetic demonstration drawing. Original bridge drawings, credentials, and experiment outputs are not in this repository.
 
+![The local web application](docs/images/web-app.png)
+*The local web application, where a frozen A/B/C batch is prepared for the synthetic demonstration drawing before the 3D results are compared.*
+
 ## What is compared?
 
 | Condition | Additional model context |
