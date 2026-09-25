@@ -1,5 +1,11 @@
 # Changelog
 
+## Interrupted slot recovery — 2026-09-26
+
+- Close an interrupted slot from its recorded turns when the runner died after the last API response was written but before the slot result was assembled. The final turn's response, text, and parsed model are promoted to the slot exactly as they would have been, the slot status keeps its recorded outcome (`completed`, `refused`, and so on), and `closed_on_resume: true` marks the recovery. A recorded clarification request whose fixed reply was never sent is closed as `interrupted_before_continuation`, or `clarification_limit_reached` when the ceiling had been reached. A started turn without a recorded response still yields `interrupted_outcome_unknown`; no request is ever re-sent.
+- Discard a turn folder that a dead runner created before writing the slot's `attempt.json`. Nothing had been sent to the provider at that point, so the slot starts normally instead of failing forever with a misleading "already in use" message.
+- `review_export.py` recognizes the new `interrupted_before_continuation` execution state. Experiments prepared before this change keep their frozen copies of both modules.
+
 ## Input handling and batch preparation — 2026-09-25
 
 - Determine each drawing's media type from a fixed extension table (`.png`, `.jpg`/`.jpeg`, `.webp`) instead of the host `mimetypes` registry. Python 3.9 on Windows has no `.webp` entry, so preparing an experiment with a WEBP drawing failed after the experiment folder was created, with a message that did not name the cause. PNG and JPEG inputs are unaffected and produce identical requests.

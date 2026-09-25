@@ -509,10 +509,11 @@ def assert_continuation(previous, updated):
         raise ValueError("Continuation must contain the fixed reply only.")
 
 
-def finish_slot(run_dir, last_turn, turn_results, status=None):
+def finish_slot(run_dir, last_turn, turn_results, status=None, **extra):
     final = copy.deepcopy(turn_results[-1])
     if status:
         final["status"] = status
+    final.update(extra)
     final.update({"api_turns": len(turn_results), "continuation_count": max(0, len(turn_results) - 1),
                   "usage": aggregate_usage(turn_results),
                   "elapsed_seconds": round(sum(row.get("elapsed_seconds") or 0 for row in turn_results), 3),
@@ -525,6 +526,27 @@ def finish_slot(run_dir, last_turn, turn_results, status=None):
             shutil.copy2(last_turn / name, run_dir / name)
     write_json(run_dir / "result.json", final)
     return final
+
+
+def close_interrupted_slot(run_dir, auto_continue_limit):
+    """Write the slot result for an attempt whose runner died before finish_slot ran. Nothing is ever re-sent."""
+    turn_dirs = sorted((run_dir / "turns").glob("turn_*"))
+    started = [p for p in turn_dirs if (p / "attempt.json").exists()]
+    known = [read_json(p / "result.json") for p in started if (p / "result.json").is_file()]
+    if started and len(known) == len(started) and (started[-1] / "result.json").is_file():
+        # Every started turn has a recorded response, so the paid outcome is known: promote the last turn's
+        # files exactly as finish_slot would have done, marking that the slot was closed on resume.
+        status = None
+        if known[-1]["status"] == "clarification_requested":
+            status = ("clarification_limit_reached" if len(known) > auto_continue_limit
+                      else "interrupted_before_continuation")
+        return finish_slot(run_dir, started[-1], known, status, closed_on_resume=True)
+    # The last started turn has no recorded response: the request may or may not have reached the provider.
+    result = {"status": "interrupted_outcome_unknown", "finished_utc": now(),
+              "api_turns": len(started), "continuation_count": max(0, len(started) - 1),
+              "usage": aggregate_usage(known)}
+    write_json(run_dir / "result.json", result)
+    return result
 
 
 def run_batch(experiment_dir, api_key=None, transport=None, max_new_calls=None, test_mode=False, stop_file=None):
@@ -582,14 +604,13 @@ def run_batch(experiment_dir, api_key=None, transport=None, max_new_calls=None, 
             if (run_dir / "attempt.json").exists():
                 # Neither the initial request nor an interrupted continuation is ever resumed.
                 if not (run_dir / "result.json").exists():
-                    turn_dirs = sorted((run_dir / "turns").glob("turn_*"))
-                    known = [read_json(p / "result.json") for p in turn_dirs if (p / "result.json").is_file()]
-                    write_json(run_dir / "result.json", {
-                        "status": "interrupted_outcome_unknown", "finished_utc": now(),
-                        "api_turns": sum((p / "attempt.json").exists() for p in turn_dirs),
-                        "continuation_count": max(0, sum((p / "attempt.json").exists() for p in turn_dirs) - 1),
-                        "usage": aggregate_usage(known)})
+                    close_interrupted_slot(run_dir, cfg["auto_continue_limit"])
                 continue
+            if (run_dir / "turns").exists():
+                # attempt.json is written before any request is sent, so a turn folder without it holds only
+                # an unsent request that the previous runner prepared before dying. Discard it and start over.
+                shutil.rmtree(run_dir / "turns")
+                print(dumps({"event": "unsent_turn_discarded", "run_id": row["run_id"]}), flush=True)
             if max_new_calls is not None and attempted >= max_new_calls:
                 break
             if stopped():
