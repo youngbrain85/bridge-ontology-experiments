@@ -63,7 +63,7 @@ class RunnerTests(unittest.TestCase):
         self.paid_guard.stop()
         self.temp.cleanup()
 
-    def prepare(self, provider="openai", limit=2, model=None, **changes):
+    def prepare(self, provider="openai", limit=2, model=None, images=None, **changes):
         self.counter += 1
         cfg = engine.read_json(PACKAGE / "config.json")
         cfg.update({"provider": provider, "model": model or ("gpt-6-astra" if provider == "openai" else "claude-opus-5"),
@@ -73,7 +73,7 @@ class RunnerTests(unittest.TestCase):
         for case in cfg["cases"]:
             for key in ("scope", "text", "provenance"):
                 case[key] = str(PACKAGE / case[key])
-            case["images"] = [str(self.root / "image.png")]
+            case["images"] = [str(path) for path in (images or [self.root / "image.png"])]
         cfg.update(changes)
         config = self.root / ("config_%02d.json" % self.counter)
         exp = self.root / ("exp_%02d" % self.counter)
@@ -387,6 +387,21 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(engine.read_json(self.first(exp) / "model_input.json"), MODEL)
         self.assertIsNone(engine.clarification_kind("", {**question, "entities": []}))
         self.assertIsNone(engine.clarification_kind("", {**question, "recommendation": {"geometry": {}}}))
+
+
+    def test_17_image_media_type_is_fixed_by_extension_not_host_registry(self):
+        for name in ("drawing.webp", "drawing.JPG", "notes.txt"):
+            (self.root / name).write_bytes(b"OFFLINE_IMAGE_NOT_A_REAL_DRAWING")
+        exp = self.prepare(images=[self.root / "drawing.webp", self.root / "drawing.JPG"])
+        # Python 3.9 on Windows has no .webp entry; the media type must not come from the host registry at all.
+        with mock.patch("mimetypes.guess_type", return_value=(None, None)):
+            payloads = [engine.build_payload(exp, case, "A") for case in engine.read_json(exp / "config.json")["cases"]]
+        for payload in payloads:
+            images = [part for part in payload["input"][0]["content"] if part["type"] == "input_image"]
+            self.assertEqual([part["image_url"].split(";")[0] for part in images], ["data:image/webp", "data:image/jpeg"])
+        with self.assertRaises(ValueError):
+            self.prepare(images=[self.root / "image.png", self.root / "notes.txt"])
+        self.no_paid.assert_not_called()
 
 
 if __name__ == "__main__":

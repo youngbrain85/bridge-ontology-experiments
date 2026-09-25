@@ -6,7 +6,6 @@ import copy
 import hashlib
 import importlib.metadata
 import json
-import mimetypes
 import os
 from pathlib import Path
 import platform
@@ -26,6 +25,8 @@ CONDITIONS = ("A", "B", "C")
 KNOWLEDGE_START = "<additional_knowledge>\n"
 KNOWLEDGE_END = "\n</additional_knowledge>"
 CODE_FILES = ("experiment.py", "knowledge_builder.py", "review_export.py", "providers.py", "model_catalog.json")
+# Fixed by file extension so the media type sent to providers never depends on the host mimetypes registry.
+IMAGE_MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 AUTONOMOUS_INSTRUCTION = (
     "Complete the generation using your recommended interpretation without asking follow-up questions."
 )
@@ -211,7 +212,7 @@ def prepare(config_path, experiment_dir):
         case["images"] = []
         for index, name in enumerate(original["images"]):
             src = resolve_input(base, name)
-            if src.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            if src.suffix.lower() not in IMAGE_MEDIA_TYPES:
                 raise ValueError("Use PNG/JPEG/WEBP image files.")
             dest = target / ("image_%02d" % index + src.suffix.lower())
             shutil.copy2(src, dest)
@@ -276,7 +277,9 @@ def build_payload(exp, case, condition):
     images = []
     for relative in case["images"]:
         path = contained(exp, relative)
-        mime = mimetypes.guess_type(path.name)[0]
+        mime = IMAGE_MEDIA_TYPES.get(path.suffix.lower())
+        if mime is None:
+            raise ValueError("Unsupported image file: " + relative)
         images.append({"media_type": mime, "data": base64.b64encode(path.read_bytes()).decode("ascii")})
     payload = providers.build_request(cfg, prompt_for(exp, case, condition), images)
     assert_isolated_payload(payload)

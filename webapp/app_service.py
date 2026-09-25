@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -67,6 +68,7 @@ class Application:
         self.lock = threading.RLock()
         self.jobs = {}
         self.preparation = None
+        self.preparation_existing = set()
         self.integrity = {}
         self.processes = {}
         self.shutting_down = False
@@ -333,9 +335,27 @@ class Application:
             reservation.parent.mkdir(parents=True, exist_ok=True)
             with reservation.open('x', encoding='utf-8') as file:
                 file.write(now())
+            # Experiment folders present now are not this preparation's to remove if it fails.
+            self.preparation_existing = {path for path in self.planned_experiments(ident) if path.exists()}
             job = self.launch('prepare', ident, None, request)
             self.preparation = job
             return {'job_id': job['id'], 'batch_id': ident}
+
+    def planned_experiments(self, ident):
+        return [inside(self.package, 'experiments/' + ident + '_m%02d' % index) for index in range(1, 10)]
+
+    def release_preparation(self, job):
+        """After a failed preparation, free the batch name and remove only the experiment folders it created."""
+        ident = job['batch_id']
+        with self.lock:
+            existing = self.preparation_existing
+            self.preparation_existing = set()
+            if job['status'] != 'failed' or inside(self.package, 'batches/' + ident + '.json').exists():
+                return
+            for path in self.planned_experiments(ident):
+                if path not in existing and path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+            inside(self.package, 'batches/' + ident + '.reserved').unlink(missing_ok=True)
 
     def operate(self, action, body):
         with self.lock:
@@ -468,6 +488,8 @@ class Application:
                     self.integrity[job['experiment_id']] = {'passed': False, 'checked_utc': now(), 'message': job['message']}
         finally:
             clear_secrets(request)
+            if job['action'] == 'prepare':
+                self.release_preparation(job)
             with self.lock:
                 self.processes.pop(job['id'], None)
 
