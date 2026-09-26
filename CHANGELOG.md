@@ -1,5 +1,12 @@
 # Changelog
 
+## Request-field test and documentation corrections — 2026-09-26
+
+- Pin every provider request field to the settings and the protocol in `test_providers.py`: OpenAI `reasoning.effort`, `max_output_tokens`, `include`, `service_tier`, `truncation`, `tool_choice`, `stream`, image `detail` and data-URL media type, and the exact key set; Anthropic `max_tokens`, `output_config.effort`, image source media types, manual `budget_tokens`, and the exact key sets. Previously these values could change without any test noticing.
+- Documentation corrected to match the code: the schedule seed shuffles case-repetition blocks as well as the A/B/C order within each block; the "use your recommended interpretation" sentence is added by the engine to the frozen prompts rather than living in the common instruction file; per-slot `api_turns` are recorded but not yet aggregated per condition; a second direct `server.py` start on Windows can share the port; the offline checks run on every operating system with the DPAPI store exercised only on Windows; the repository layout lists `batch_protocol.py`, `frozen_runtime.py`, `review_export.py`, the legacy versus `minimal_v1` prompt sets, and `CHANGELOG.md` at the root; the `package.json` version is the viewer bundle.
+- Input preparation now documents the CLI `run` command's `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` environment variables, that `verify_release.py` requires the committed `config.json` to keep the synthetic packet, and that the bundled common instruction describes a cable anchorage and should be adapted (with a new `input_protocol_version`) to a packet's own scope.
+- Remove the dead `!.env.example` ignore exception: `verify_release.py` rejects every `.env*` file and no such example exists.
+
 ## Frozen-runtime and review-export tests — 2026-09-26
 
 - Add `verification/test_frozen_review.py`. The frozen-software loader is now covered directly: `verified_software` accepts a freshly frozen tree and rejects a modified frozen module, an unrecorded module placed in `software/`, and a modified manifest; `load_in_worker` executes the frozen source rather than the live modules; `check_in_process` runs the frozen engine in a child process and fails on tampering.

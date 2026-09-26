@@ -16,7 +16,7 @@ Preparation copies the selected inputs, software, schema, and settings into each
 
 The drawing image bytes and order, scope, common prompt, technical output contract, and converter are shared. Provider-specific request envelopes and internal image processing can differ. Model names and reasoning labels are recorded; equal labels do not imply equal computation.
 
-The schedule seed randomizes condition order only. It is not a provider sampling seed. Repetition defaults to one and is a pilot setting, not a statistical sufficiency claim.
+The schedule seed randomizes the order of case-repetition blocks and the A/B/C order within each block. It is not a provider sampling seed. Repetition defaults to one and is a pilot setting, not a statistical sufficiency claim.
 
 ## Ontology implementation
 
@@ -26,7 +26,7 @@ The current generation procedure does not execute OWL reasoning or use SHACL con
 
 ## Clarification handling
 
-The common instruction asks the model to use its recommended interpretation and finish. If an explicit clarification question is recognized, the same fixed answer is sent to that slot. The continuation limit is fixed across a comparison. Report actual request counts, because a common limit does not force the same number of calls.
+The engine prepends a fixed sentence to every prompt asking the model to use its recommended interpretation and finish; it is part of the frozen prompt files, not of the common instruction file shown in the input preview. If an explicit clarification question is recognized, the same fixed answer is sent to that slot. The continuation limit is fixed across a comparison. Report actual request counts, because a common limit does not force the same number of calls: each slot records its `api_turns` in `runs/<run_id>/result.json`, and per-condition totals must currently be summed from those files.
 
 The implementation does not retry malformed final JSON, refusals, or token-limit failures as repair prompts. Preserve these outcomes in the study record. Re-running a failed condition is a new experimental attempt, not a replacement for the failure.
 

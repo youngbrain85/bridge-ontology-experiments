@@ -148,6 +148,39 @@ class ProviderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             p.build_request(settings(), prompt, [{"media_type": "image/png", "data": "not base64!"}])
 
+    def test_request_fields_are_pinned_to_the_settings_and_protocol(self):
+        prompt = "Pinned request fields."
+        webp = {"media_type": "image/webp", "data": IMAGE["data"]}
+        cfg = {**settings(), "reasoning_effort": "low", "max_output_tokens": 4096}
+        a = p.build_request(cfg, prompt, [IMAGE, webp])
+        self.assertEqual(a["model"], "gpt-6-astra")
+        self.assertEqual(a["reasoning"], {"effort": "low"})
+        self.assertEqual(a["max_output_tokens"], 4096)
+        self.assertEqual(a["include"], ["reasoning.encrypted_content"])
+        self.assertEqual((a["service_tier"], a["truncation"], a["tool_choice"]), ("default", "disabled", "none"))
+        self.assertIs(a["stream"], False)
+        self.assertEqual(a["input"][0]["role"], "user")
+        self.assertEqual(a["input"][0]["content"][0], {"type": "input_text", "text": prompt})
+        images = a["input"][0]["content"][1:]
+        self.assertEqual([part["type"] for part in images], ["input_image", "input_image"])
+        self.assertEqual([part["detail"] for part in images], ["high", "high"])
+        self.assertEqual([part["image_url"].split(";", 1)[0] for part in images], ["data:image/png", "data:image/webp"])
+        self.assertTrue(all(part["image_url"].split(",", 1)[1] == IMAGE["data"] for part in images))
+        self.assertEqual(set(a), {"model", "instructions", "input", "store", "stream", "tools", "tool_choice", "truncation",
+                                  "reasoning", "max_output_tokens", "include", "service_tier"})
+        cfg = {**settings("claude-opus-5"), "reasoning_effort": "max", "max_output_tokens": 4096}
+        b = p.build_request(cfg, prompt, [IMAGE, webp])
+        self.assertEqual((b["model"], b["max_tokens"], b["stream"]), ("claude-opus-5", 4096, False))
+        self.assertEqual(b["output_config"], {"effort": "max"})
+        self.assertEqual(b["messages"][0]["content"][0], {"type": "text", "text": prompt})
+        self.assertEqual([part["source"]["media_type"] for part in b["messages"][0]["content"][1:]], ["image/png", "image/webp"])
+        self.assertTrue(all(part["source"]["type"] == "base64" and part["source"]["data"] == IMAGE["data"] for part in b["messages"][0]["content"][1:]))
+        self.assertEqual(set(b), {"model", "system", "messages", "max_tokens", "stream", "thinking", "output_config"})
+        cfg = {**settings("claude-haiku-4-5-20251001"), "thinking_budget_tokens": 2048, "max_output_tokens": 4096}
+        manual = p.build_request(cfg, prompt, [IMAGE])
+        self.assertEqual(manual["thinking"], {"type": "enabled", "budget_tokens": 2048})
+        self.assertEqual(set(manual), {"model", "system", "messages", "max_tokens", "stream", "thinking"})
+
     def test_openai_continuation_preserves_encrypted_output_and_does_not_mutate(self):
         initial = p.build_request(settings(), "Initial independent prompt", [IMAGE])
         raw = openai_response()
