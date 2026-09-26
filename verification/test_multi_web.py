@@ -523,7 +523,7 @@ class WorkerAndBatchTests(unittest.TestCase):
         request = {"api_key": KEYS["openai"], "max_new_slots": 1} if action == "run" else {}
         capture = io.StringIO()
         fake_run = mock.Mock(return_value=outcome or {"status": "stopped_after_current_request", "new_calls": 1})
-        # Frozen module dispatch is covered in the version compatibility suite;
+        # Frozen module dispatch is covered by verification/test_frozen_review.py;
         # keep this unit test's runner/key boundary in the current mocked module.
         with mock.patch.object(sys, "argv", args), mock.patch.object(sys, "stdin", io.StringIO(json.dumps(request))), contextlib.redirect_stdout(capture), mock.patch.object(frozen_runtime, "load_in_worker", return_value=engine), mock.patch.object(engine, "run_batch", fake_run), mock.patch.object(worker, "export_review", return_value={"status": "ok"}) as export:
             code = worker.main()
