@@ -1,5 +1,10 @@
 # Changelog
 
+## Credential store under cloud-synced folders — 2026-09-26
+
+- Only reparse points that redirect the path (symbolic links, junctions, mount points; the name-surrogate tag bit) disable the saved-key store. Cloud-file placeholders such as OneDrive Files On-Demand and deduplicated files are also reparse points but resolve in place, so a repository kept under OneDrive no longer reports "Cannot load the saved key" for every provider. A reparse point whose tag cannot be read is still rejected.
+- The web tests inject an in-memory credential store on non-Windows hosts, so the `/api/run` launch, stop, and key-isolation tests now run everywhere instead of failing without DPAPI. Windows CI keeps using the real store.
+
 ## Interrupted slot recovery — 2026-09-26
 
 - Close an interrupted slot from its recorded turns when the runner died after the last API response was written but before the slot result was assembled. The final turn's response, text, and parsed model are promoted to the slot exactly as they would have been, the slot status keeps its recorded outcome (`completed`, `refused`, and so on), and `closed_on_resume: true` marks the recovery. A recorded clarification request whose fixed reply was never sent is closed as `interrupted_before_continuation`, or `clarification_limit_reached` when the ceiling had been reached. A started turn without a recorded response still yields `interrupted_outcome_unknown`; no request is ever re-sent.
