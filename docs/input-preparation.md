@@ -34,7 +34,9 @@ python -B -X utf8 experiment.py prepare --config config.local.json --output expe
 python -B -X utf8 experiment.py check --experiment experiments/my_case_pilot
 ```
 
-These commands do not call a model API. The web application currently reads `config.json` as its preparation template. To use the packet in the web UI, apply the local configuration to that file and keep your private paths out of commits. Do not commit credentials into either configuration file.
+These commands do not call a model API. The CLI `run` command reads the key from `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the environment; the web application never uses those variables. The web application currently reads `config.json` as its preparation template. To use the packet in the web UI, apply the local configuration to that file and keep your private paths out of commits. Do not commit credentials into either configuration file. `scripts/verify_release.py` requires the committed `config.json` to point at the synthetic packet, so restore it before running the release checks.
+
+The bundled common instruction (`resources/shared/minimal_v1/common_instruction.md`) describes a cable anchorage and its deck segment. Adapt it to what your packet's scope actually asks for, and give the adapted prompt set its own `input_protocol_version`, because prompt changes create a new input protocol.
 
 ## Changes and comparisons
 

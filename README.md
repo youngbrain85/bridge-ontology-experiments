@@ -2,7 +2,7 @@
 
 A local research application for studying how ontology representations affect the conversion of 2D bridge drawings into 3D models. Run independent A/B/C experiments with OpenAI and Anthropic models, convert their geometry JSON through one shared backend, and inspect the resulting models side by side.
 
-**English edition, September 22, 2026.** Based on experiment engine 0.4.0, web application 0.2.5, and geometry backend 0.1.2. This edition includes the latest local source snapshot and the September 17 diagnostic findings. It ships with an explicitly synthetic demonstration drawing. Original bridge drawings, credentials, and experiment outputs are not in this repository.
+**English edition, September 22, 2026.** Based on experiment engine 0.4.0, web application 0.2.5, and geometry backend 0.1.2 (the `package.json` version is the separate viewer bundle). This edition includes the latest local source snapshot and the September 17 diagnostic findings. It ships with an explicitly synthetic demonstration drawing. Original bridge drawings, credentials, and experiment outputs are not in this repository.
 
 ![The local web application](docs/images/web-app.png)
 *The local web application, where a frozen A/B/C batch is prepared for the synthetic demonstration drawing before the 3D results are compared.*
@@ -31,7 +31,7 @@ py -3.9 -m venv .venv
 .\04_web_app.cmd
 ```
 
-The application normally opens at `http://127.0.0.1:8765`. If that port is occupied, it selects an available nearby port. You can also start the server directly:
+The application normally opens at `http://127.0.0.1:8765`. If that port is occupied, it selects an available nearby port. The launcher also refuses to start a second instance while `webapp/runtime/server.json` records a running one. You can also start the server directly, but on Windows a second direct start can bind the same port instead of moving to the next one, so stop the running instance first:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -X utf8 webapp/server.py --package . --port 8765 --open
@@ -62,7 +62,7 @@ Place private drawing packets under the ignored `resources/private_data/` direct
 .\.venv\Scripts\python.exe -B -X utf8 -m unittest discover -s backend -p "test_*.py"
 ```
 
-These checks use mock responses and synthetic fixtures. They do not require API keys or make paid model requests. To test conversion alone:
+These checks use mock responses and synthetic fixtures. They do not require API keys or make paid model requests, and they run on any operating system; only on Windows do the web tests exercise the real DPAPI key store, elsewhere an in-memory stand-in is used. To test conversion alone:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -X utf8 backend/geometry_backend.py --input examples/synthetic_model.json --schema resources/shared/minimal_v1/common_output.schema.json --output outputs/synthetic-conversion
@@ -83,17 +83,22 @@ npm run build:viewer
 
 ```text
 experiment.py          Frozen experiment preparation, execution, and audit
+batch_protocol.py      Multi-model batch definition and verification
+frozen_runtime.py      Loads the frozen software copy inside a worker process
 providers.py           OpenAI and Anthropic request/response adapters
 knowledge_builder.py   Aligned prose and structured fact projections
+review_export.py       Geometry conversion and blinded review copies
 backend/               Shared deterministic geometry conversion
 webapp/                Local server, credential storage, and comparison UI
 resources/ontology/    English ontology and its model-context representation
-resources/shared/      Common prompts and geometry contracts
+resources/shared/      minimal_v1/ holds the current prompts and contract; the
+                       top-level 0.1.0 set is legacy and used only by backend tests
 resources/cases/       Synthetic demonstration packet only
 examples/              Hand-authored conversion fixture
-verification/          Offline orchestration and isolation tests
-docs/                  Protocol, input setup, diagnostics, and release notes
+verification/          Offline orchestration, isolation, and review-export tests
+docs/                  Protocol, input setup, and diagnostics
 scripts/               Release integrity and language checks
+CHANGELOG.md           Release notes
 ```
 
 ## Current limitations
