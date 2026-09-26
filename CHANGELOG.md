@@ -1,5 +1,14 @@
 # Changelog
 
+## Per-condition totals, case flag records, and robustness fixes — 2026-09-26
+
+- The review export now writes `admin/condition_summary.json` and returns the same `conditions` block in its report: per condition, the scheduled, attempted, and finished slots, outcome counts, realized `api_turns` and continuations, elapsed time, token usage by category (input, output, total, cached, cache write, uncached, reasoning), and the frozen prompt size in bytes before any call. The totals come only from recorded slot results; nothing is re-sent. The summary names conditions and cases, so it stays under `admin/` and never enters the review folder. The web application shows the same per-condition counts and tokens on each model card.
+- `used_for_ontology_development` is now recorded next to the study role in each experiment's `manifest.json`, in the batch record (`cases`), in the condition summary, and in the web status, so a report can state which results are in-sample. Previously the flag was validated and then dropped.
+- Slot usage totals keep `cache_write_tokens` and `uncached_tokens` instead of dropping them, and Anthropic usage with explicit `null` cache counters is treated as zero cache activity instead of producing a `null` input total.
+- `write_json` retries the atomic replace for up to one second when Windows refuses it because another process (for example the web server polling `result.json`) has the file open, then raises as before.
+- One experiment with an unreadable `config.json` or `schedule.json` no longer turns the whole batch status into a 500 error: that model is reported as unreadable with an explanatory message, and the other models and totals still answer.
+- Remove the unused worker process table from the web application; every exit path already waits for the worker, and shutdown requires an idle application.
+
 ## Request-field test and documentation corrections — 2026-09-26
 
 - Pin every provider request field to the settings and the protocol in `test_providers.py`: OpenAI `reasoning.effort`, `max_output_tokens`, `include`, `service_tier`, `truncation`, `tool_choice`, `stream`, image `detail` and data-URL media type, and the exact key set; Anthropic `max_tokens`, `output_config.effort`, image source media types, manual `budget_tokens`, and the exact key sets. Previously these values could change without any test noticing.

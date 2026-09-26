@@ -25,6 +25,8 @@ CONDITIONS = ("A", "B", "C")
 KNOWLEDGE_START = "<additional_knowledge>\n"
 KNOWLEDGE_END = "\n</additional_knowledge>"
 CODE_FILES = ("experiment.py", "knowledge_builder.py", "review_export.py", "providers.py", "model_catalog.json")
+REPLACE_ATTEMPTS = 20
+REPLACE_RETRY_SECONDS = 0.05
 # Fixed by file extension so the media type sent to providers never depends on the host mimetypes registry.
 IMAGE_MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 AUTONOMOUS_INSTRUCTION = (
@@ -60,7 +62,16 @@ def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".tmp")
     temp.write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-    temp.replace(path)
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            temp.replace(path)
+            return
+        except PermissionError:
+            # Windows refuses to replace a file another process is reading (for example the
+            # web server polling result.json). The window is milliseconds; wait and retry.
+            if attempt == REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(REPLACE_RETRY_SECONDS)
 
 
 def safe_id(value):
@@ -229,6 +240,7 @@ def prepare(config_path, experiment_dir):
     immutable = [exp / "config.json", exp / "schedule.json", exp / "input_integrity.json"]
     immutable += sorted(p for tree in ("frozen", "software") for p in (exp / tree).rglob("*") if p.is_file())
     manifest = {"version": VERSION, "created_utc": now(), "study_role": cfg["study_role"],
+                "cases": case_records(cfg),
                 "grader": "human only; operational checks are not accuracy scores",
                 "provider": cfg["provider"], "endpoint": ENDPOINTS[cfg["provider"]],
                 "retries_per_run": 0, "repair_calls": 0,
@@ -247,6 +259,12 @@ def prepare(config_path, experiment_dir):
     return {"experiment": str(exp), "scheduled_calls": slots, "scheduled_slots": slots,
             "max_api_turns": slots * (1 + cfg["auto_continue_limit"]),
             "integrity": integrity["passed"], "status": "prepared_no_api_calls"}
+
+
+def case_records(cfg):
+    """Case identity and the ontology-development flag, recorded wherever the study role is recorded."""
+    return [{"case_id": case["case_id"], "used_for_ontology_development": case["used_for_ontology_development"]}
+            for case in cfg["cases"]]
 
 
 def common_prompt(exp, case):
@@ -477,6 +495,9 @@ def consume_response(run_dir, body, metadata, provider="openai"):
     return result
 
 
+INPUT_TOKEN_DETAILS = ("cached_tokens", "cache_write_tokens", "uncached_tokens")
+
+
 def aggregate_usage(turn_results):
     usages = [row.get("usage") for row in turn_results if isinstance(row.get("usage"), dict)]
     if not usages:
@@ -491,7 +512,7 @@ def aggregate_usage(turn_results):
                 values.append(value)
         return sum(values) if values else None
     return {**{key: total((key,)) for key in ("input_tokens", "output_tokens", "total_tokens")},
-            "input_tokens_details": {"cached_tokens": total(("input_tokens_details", "cached_tokens"))},
+            "input_tokens_details": {key: total(("input_tokens_details", key)) for key in INPUT_TOKEN_DETAILS},
             "output_tokens_details": {"reasoning_tokens": total(("output_tokens_details", "reasoning_tokens"))}}
 
 

@@ -450,6 +450,47 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue((second / "raw_response.txt").is_file())
         self.no_paid.assert_not_called()
 
+    def test_20_slot_usage_keeps_every_input_category_and_manifest_records_the_case_flag(self):
+        exp = self.prepare("anthropic", limit=2)
+        manifest = engine.read_json(exp / "manifest.json")
+        cfg = engine.read_json(exp / "config.json")
+        self.assertEqual(manifest["cases"], [{"case_id": case["case_id"], "used_for_ontology_development": case["used_for_ontology_development"]}
+                                             for case in cfg["cases"]])
+        self.assertEqual({type(case["used_for_ontology_development"]) for case in manifest["cases"]}, {bool})
+        question = response("anthropic", text="Should I use the recommended option?", tokens=10)
+        transport = mock.Mock(side_effect=[question, response("anthropic", tokens=20)])
+        self.execute(exp, transport, limit=1)
+        result = engine.read_json(self.first(exp) / "result.json")
+        self.assertEqual((result["status"], result["api_turns"]), ("completed", 2))
+        # 10 + 2 + 3 and 20 + 2 + 3 input tokens across the two turns; cache categories are kept, not dropped.
+        self.assertEqual(result["usage"]["input_tokens"], 40)
+        self.assertEqual(result["usage"]["input_tokens_details"], {"cached_tokens": 4, "cache_write_tokens": 6, "uncached_tokens": 30})
+        self.assertEqual(result["usage"]["output_tokens_details"], {"reasoning_tokens": 2})
+        self.assertEqual(engine.aggregate_usage([{"usage": None}, {}]), None)
+
+    def test_21_write_json_retries_a_transient_windows_replace_refusal_and_then_gives_up(self):
+        target = self.root / "locked" / "result.json"
+        real_replace = Path.replace
+        calls = []
+
+        def refuse_twice(self, destination):
+            calls.append(destination)
+            if len(calls) <= 2:
+                raise PermissionError(32, "The process cannot access the file because it is being used by another process")
+            return real_replace(self, destination)
+
+        with mock.patch.object(Path, "replace", refuse_twice), mock.patch.object(engine.time, "sleep") as sleep:
+            engine.write_json(target, {"status": "completed"})
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(engine.read_json(target), {"status": "completed"})
+        self.assertFalse(target.with_name("result.json.tmp").exists())
+        with mock.patch.object(Path, "replace", side_effect=PermissionError(32, "locked")), mock.patch.object(engine.time, "sleep") as sleep:
+            with self.assertRaises(PermissionError):
+                engine.write_json(target, {"status": "changed"})
+        self.assertEqual(sleep.call_count, engine.REPLACE_ATTEMPTS - 1)
+        self.assertEqual(engine.read_json(target), {"status": "completed"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

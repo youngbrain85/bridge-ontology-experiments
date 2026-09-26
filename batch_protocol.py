@@ -63,6 +63,7 @@ def prepare_batch(package, ident, request, job_dir):
     batch = {'version': '0.2.0', 'engine_version': engine.VERSION, 'id': ident, 'created_utc': engine.now(),
              'input_protocol_version': base.get('input_protocol_version', engine.VERSION),
              'study_role': base['study_role'], 'case_ids': [c['case_id'] for c in base['cases']],
+             'cases': engine.case_records(base),
              'repetitions': base['repetitions'], 'max_output_tokens': base['max_output_tokens'],
              'auto_continue_limit': base['auto_continue_limit'], 'model_count': len(rows), 'models': rows,
              'total_slots': count, 'max_api_calls': count * (1 + base['auto_continue_limit']),

@@ -70,7 +70,6 @@ class Application:
         self.preparation = None
         self.preparation_existing = set()
         self.integrity = {}
-        self.processes = {}
         self.shutting_down = False
 
     def is_busy(self):
@@ -209,39 +208,63 @@ class Application:
 
     def model_status(self, ident):
         exp = self.exp_path(ident)
+        job = next((j for j in reversed(list(self.jobs.values())) if j['experiment_id'] == ident), None)
+        busy = bool(job and job['status'] in ('running', 'stopping'))
+        locked = (exp / 'run.lock').exists()
+        try:
+            return self._model_status(ident, exp, job, busy, locked)
+        except (OSError, ValueError, KeyError, TypeError):
+            # One unreadable experiment record must not take the whole batch status down.
+            progress = {k: 0 for k in COUNT_KEYS}
+            progress.update({k: None for k in TOKEN_KEYS})
+            progress['active_run'] = None
+            return {'experiment': {'id': ident, 'provider': None, 'model': None, 'reasoning_effort': None,
+                                  'thinking_budget_tokens': None, 'repetitions': None, 'max_output_tokens': None,
+                                  'auto_continue_limit': None, 'total_calls': None, 'case_ids': [], 'cases': [], 'path': str(exp)},
+                    'job': dict(job) if job else None, 'busy': busy, 'locked': locked, 'integrity': self.integrity.get(ident),
+                    'progress': progress, 'conditions': {}, 'runs': [], 'review': {'available': False, 'slots': []},
+                    'protocol_deviation': (exp / 'admin/protocol_violation.json').exists(), 'unreadable': True,
+                    'error': 'Experiment records could not be read. Original files are preserved; prepare a new batch to continue.'}
+
+    def _model_status(self, ident, exp, job, busy, locked):
         cfg = read_json(exp / 'config.json')
         schedule = read_condition_document(exp / 'schedule.json')['runs']
         mapping = self.review_mapping(exp)
         review_ids = {row['run_id']: ident for ident, row in mapping.items()}
-        job = next((j for j in reversed(list(self.jobs.values())) if j['experiment_id'] == ident), None)
-        busy = bool(job and job['status'] in ('running', 'stopping'))
-        locked = (exp / 'run.lock').exists()
         progress = {k: 0 for k in COUNT_KEYS}
         progress.update({k: None for k in TOKEN_KEYS})
         progress.update({'scheduled': len(schedule), 'active_run': None})
+        conditions = {}
+        for letter in CONDITION_LABELS:
+            conditions[letter] = {k: 0 for k in COUNT_KEYS}
+            conditions[letter].update({k: None for k in TOKEN_KEYS})
         runs = []
         for row in schedule:
+            tallies = [progress] + ([conditions[row['condition']]] if row.get('condition') in conditions else [])
             folder = inside(exp, 'runs/' + safe_id(row['run_id']))
             attempted = (folder / 'attempt.json').exists()
             result = read_json(folder / 'result.json')
             turns = list((folder / 'turns').glob('*/attempt.json'))
             calls = len(turns) if turns else (result or {}).get('api_turns', int(attempted))
             continuations = max(0, calls - 1)
-            progress['attempted'] += int(attempted)
-            progress['api_calls'] += calls
-            progress['continuations'] += continuations
+            for tally in tallies:
+                tally['scheduled'] += int(tally is not progress)
+                tally['attempted'] += int(attempted)
+                tally['api_calls'] += calls
+                tally['continuations'] += continuations
             if result:
                 status = result.get('status', 'unknown')
-                progress['finished'] += 1
-                progress['json_completed'] += int(status == 'completed')
-                progress['failures'] += int(status != 'completed')
                 usage = result.get('usage') or {}
                 token_values = {'input_tokens': usage.get('input_tokens'), 'output_tokens': usage.get('output_tokens'),
                                 'cached_tokens': (usage.get('input_tokens_details') or {}).get('cached_tokens'),
                                 'reasoning_tokens': (usage.get('output_tokens_details') or {}).get('reasoning_tokens')}
-                for key, value in token_values.items():
-                    if isinstance(value, (int, float)) and not isinstance(value, bool):
-                        progress[key] = (progress[key] or 0) + value
+                for tally in tallies:
+                    tally['finished'] += 1
+                    tally['json_completed'] += int(status == 'completed')
+                    tally['failures'] += int(status != 'completed')
+                    for key, value in token_values.items():
+                        if isinstance(value, (int, float)) and not isinstance(value, bool):
+                            tally[key] = (tally[key] or 0) + value
             elif attempted:
                 status = 'running' if busy or locked else 'interrupted_outcome_unknown'
                 if status == 'running':
@@ -252,13 +275,17 @@ class Application:
                          'status': status, 'api_calls': calls, 'continuations': continuations,
                          'http_status': (result or {}).get('http_status'), 'elapsed_seconds': (result or {}).get('elapsed_seconds')})
         progress['remaining'] = len(schedule) - progress['attempted']
+        for tally in conditions.values():
+            tally['remaining'] = tally['scheduled'] - tally['attempted']
         return {'experiment': {'id': ident, 'provider': cfg['provider'], 'model': cfg['model'],
                               'reasoning_effort': cfg['reasoning_effort'], 'thinking_budget_tokens': cfg.get('thinking_budget_tokens'),
                               'repetitions': cfg['repetitions'], 'max_output_tokens': cfg['max_output_tokens'],
                               'auto_continue_limit': cfg['auto_continue_limit'], 'total_calls': len(schedule),
-                              'case_ids': [c['case_id'] for c in cfg['cases']], 'path': str(exp)},
+                              'case_ids': [c['case_id'] for c in cfg['cases']],
+                              'cases': [{'case_id': c['case_id'], 'used_for_ontology_development': c.get('used_for_ontology_development')}
+                                        for c in cfg['cases']], 'path': str(exp)},
                 'job': dict(job) if job else None, 'busy': busy, 'locked': locked,
-                'integrity': self.integrity.get(ident), 'progress': progress, 'runs': runs,
+                'integrity': self.integrity.get(ident), 'progress': progress, 'conditions': conditions, 'runs': runs,
                 'review': self.review_state(ident, mapping), 'protocol_deviation': (exp / 'admin/protocol_violation.json').exists()}
 
     def status(self, ident=None):
@@ -436,8 +463,6 @@ class Application:
                 args += ['--experiment', job['experiment_id']]
             process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                        env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            with self.lock:
-                self.processes[job['id']] = process
             process.stdin.write(json.dumps(request, ensure_ascii=False).encode('utf-8'))
             process.stdin.close()
             clear_secrets(request)
@@ -490,8 +515,6 @@ class Application:
             clear_secrets(request)
             if job['action'] == 'prepare':
                 self.release_preparation(job)
-            with self.lock:
-                self.processes.pop(job['id'], None)
 
     def stop(self, body):
         with self.lock:

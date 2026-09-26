@@ -368,6 +368,12 @@ function renderProgress(models) {
     const counts = el('div', 'model-counts');
     for (const [label, value] of [['Provider API calls', progress.api_calls], ['Automatic continuations', progress.continuations], ['Generation or parsing failures', progress.failures]]) { const item = el('div', '', label); item.append(el('strong', '', n(value))); counts.append(item); }
     card.append(labels, bar, counts, el('p', 'model-tokens', `Tokens: input ${n(progress.input_tokens)} · output ${n(progress.output_tokens)} · cached ${n(progress.cached_tokens)} · reasoning ${n(progress.reasoning_tokens)}`));
+    const conditions = model.conditions || {};
+    for (const letter of Object.keys(conditions)) {
+      const c = conditions[letter];
+      card.append(el('p', 'model-tokens condition-tokens', `${letter}: slots ${n(c.finished)} / ${n(c.scheduled)} · API calls ${n(c.api_calls)} · continuations ${n(c.continuations)} · input ${n(c.input_tokens)} · output ${n(c.output_tokens)} · cached ${n(c.cached_tokens)} · reasoning ${n(c.reasoning_tokens)}`));
+    }
+    if (model.error) card.append(el('p', 'model-message error-text', model.error));
     if (job?.message) card.append(el('p', 'model-message', job.message));
     if (model.locked && !model.busy) card.append(el('p', 'model-message', 'An execution lock remains. Check the corresponding process.'));
     if (model.protocol_deviation) card.append(el('p', 'model-message', 'A protocol deviation is recorded. Preserve the original and prepare a new batch.'));
