@@ -1,5 +1,11 @@
 # Changelog
 
+## Frozen-runtime and review-export tests — 2026-09-26
+
+- Add `verification/test_frozen_review.py`. The frozen-software loader is now covered directly: `verified_software` accepts a freshly frozen tree and rejects a modified frozen module, an unrecorded module placed in `software/`, and a modified manifest; `load_in_worker` executes the frozen source rather than the live modules; `check_in_process` runs the frozen engine in a child process and fails on tampering.
+- The blinded review export is covered end to end on a synthetic box model: review slots carry only anonymous identifiers and status fields, the administrator key maps every scheduled run once with matching condition, case, and repetition, GLB metadata and OBJ object names are anonymized, a second export reuses conversions without re-running the backend and archives earlier copies, a review key that no longer matches the schedule is refused, invalid model JSON is reported without touching the original, and a missing backend or schema is refused before any write.
+- Correct the worker test comment that cited a nonexistent "version compatibility suite".
+
 ## Credential store under cloud-synced folders — 2026-09-26
 
 - Only reparse points that redirect the path (symbolic links, junctions, mount points; the name-surrogate tag bit) disable the saved-key store. Cloud-file placeholders such as OneDrive Files On-Demand and deduplicated files are also reparse points but resolve in place, so a repository kept under OneDrive no longer reports "Cannot load the saved key" for every provider. A reparse point whose tag cannot be read is still rejected.
