@@ -157,9 +157,9 @@ def _normalized_usage(provider, usage):
         normalized["output_tokens_details"]["reasoning_tokens"] = _counter(output_details.get("reasoning_tokens"))
     else:
         # Anthropic input_tokens excludes cache reads/writes. Include all three
-        # reported categories in the common total; missing cache fields mean 0.
-        cache_read = _counter(usage.get("cache_read_input_tokens", 0))
-        cache_write = _counter(usage.get("cache_creation_input_tokens", 0))
+        # reported categories in the common total; a missing or null cache field means 0.
+        cache_read = _counter(usage.get("cache_read_input_tokens") or 0)
+        cache_write = _counter(usage.get("cache_creation_input_tokens") or 0)
         if None not in (input_count, cache_read, cache_write):
             normalized["input_tokens"] = input_count + cache_read + cache_write
         normalized["input_tokens_details"] = {"cached_tokens": cache_read, "cache_write_tokens": cache_write, "uncached_tokens": input_count}

@@ -450,6 +450,37 @@ class MultiWebTests(unittest.TestCase):
                 self.assertEqual(credential_store._linked(info), expected)
 
 
+    def test_16_status_tallies_each_condition_and_survives_one_unreadable_experiment(self):
+        exp = self.package / "experiments/fixture_m01"
+        self.put(exp / "runs/r0001/attempt.json", {"offline_fixture_only": True})
+        self.put(exp / "runs/r0001/result.json", {"status": "completed", "api_turns": 2, "usage": {
+            "input_tokens": 100, "output_tokens": 40, "input_tokens_details": {"cached_tokens": 10}, "output_tokens_details": {"reasoning_tokens": 5}}})
+        self.put(exp / "runs/r0002/attempt.json", {"offline_fixture_only": True})
+        status, _, body = self.request("GET", "/api/status?batch_id=fixture")
+        self.assertEqual(status, 200)
+        model = json.loads(body)["models"][0]
+        self.assertEqual(model["experiment"]["cases"], [{"case_id": "OFFLINE", "used_for_ontology_development": None}])
+        self.assertEqual(sorted(model["conditions"]), ["A", "B", "C"])
+        self.assertEqual({k: model["conditions"]["C"][k] for k in ("scheduled", "attempted", "finished", "json_completed", "remaining", "api_calls", "continuations", "input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens")},
+                         {"scheduled": 1, "attempted": 1, "finished": 1, "json_completed": 1, "remaining": 0, "api_calls": 2, "continuations": 1, "input_tokens": 100, "output_tokens": 40, "cached_tokens": 10, "reasoning_tokens": 5})
+        self.assertEqual({k: model["conditions"]["A"][k] for k in ("scheduled", "attempted", "finished", "api_calls", "input_tokens")}, {"scheduled": 1, "attempted": 1, "finished": 0, "api_calls": 1, "input_tokens": None})
+        self.assertEqual({k: model["conditions"]["B"][k] for k in ("scheduled", "attempted", "api_calls")}, {"scheduled": 0, "attempted": 0, "api_calls": 0})
+        self.assertEqual((model["progress"]["api_calls"], model["progress"]["input_tokens"]), (3, 100))
+        # A corrupted schedule in one experiment degrades only that model; the batch status still answers.
+        (self.package / "experiments/fixture_m02/schedule.json").write_text("{broken", encoding="utf-8")
+        status, _, body = self.request("GET", "/api/status?batch_id=fixture")
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        first, second = data["models"]
+        self.assertNotIn("unreadable", first)
+        self.assertTrue(second["unreadable"])
+        self.assertEqual((second["experiment"]["id"], second["runs"], second["conditions"], second["review"]["available"]), ("fixture_m02", [], {}, False))
+        self.assertIn("could not be read", second["error"])
+        self.assertEqual((data["totals"]["api_calls"], data["totals"]["input_tokens"], data["totals"]["scheduled"]), (3, 100, 2))
+        self.assertEqual(self.request("GET", "/api/bootstrap")[0], 200)
+        self.popen.assert_not_called()
+
+
 class WorkerAndBatchTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="offline_multi_worker_", dir=HERE)
@@ -501,6 +532,8 @@ class WorkerAndBatchTests(unittest.TestCase):
         self.assertEqual(batch_protocol.common_fingerprint(a), batch_protocol.common_fingerprint(b))
         self.assertEqual(engine.read_json(a / "schedule.json"), engine.read_json(b / "schedule.json"))
         cases = engine.read_json(a / "config.json")["cases"]
+        self.assertEqual(batch["cases"], [{"case_id": c["case_id"], "used_for_ontology_development": c["used_for_ontology_development"]} for c in cases])
+        self.assertEqual(batch["cases"], engine.read_json(a / "manifest.json")["cases"])
         for case in cases:
             for condition in "ABC":
                 file = "frozen/cases/" + case["case_id"] + "/" + condition + "_prompt.txt"

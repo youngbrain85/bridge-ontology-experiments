@@ -87,7 +87,7 @@ batch_protocol.py      Multi-model batch definition and verification
 frozen_runtime.py      Loads the frozen software copy inside a worker process
 providers.py           OpenAI and Anthropic request/response adapters
 knowledge_builder.py   Aligned prose and structured fact projections
-review_export.py       Geometry conversion and blinded review copies
+review_export.py       Geometry conversion, blinded review copies, per-condition totals
 backend/               Shared deterministic geometry conversion
 webapp/                Local server, credential storage, and comparison UI
 resources/ontology/    English ontology and its model-context representation

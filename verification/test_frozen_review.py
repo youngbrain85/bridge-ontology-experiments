@@ -252,5 +252,48 @@ class ReviewExportTests(unittest.TestCase):
         self.assertFalse((self.exp / "admin/review_key.json").exists())
 
 
+    def test_export_writes_administrator_condition_totals_from_recorded_slots_only(self):
+        schedule = {row["run_id"]: row for row in engine.read_json(self.exp / "schedule.json")["runs"]}
+        completed, refused, missing = (schedule[run]["condition"] for run in self.runs)
+        self.assertEqual({completed, refused, missing}, {"A", "B", "C"})
+        report = self.export()
+        summary = engine.read_json(self.exp / "admin/condition_summary.json")
+        self.assertEqual(report["conditions"], summary["conditions"])
+        self.assertEqual(report["condition_summary"], str(self.exp / "admin/condition_summary.json"))
+        self.assertEqual(summary["study_role"], engine.read_json(self.exp / "manifest.json")["study_role"])
+        self.assertEqual(summary["cases"], engine.read_json(self.exp / "manifest.json")["cases"])
+        self.assertEqual(summary["auto_continue_limit"], 1)
+        self.assertEqual(summary["runs_without_condition"], 0)
+        done = summary["conditions"][completed]
+        self.assertEqual({k: done[k] for k in ("scheduled", "attempted", "finished", "completed", "api_turns", "continuations", "usage_reported_slots")},
+                         {"scheduled": 1, "attempted": 1, "finished": 1, "completed": 1, "api_turns": 1, "continuations": 0, "usage_reported_slots": 1})
+        self.assertEqual(done["statuses"], {"completed": 1})
+        self.assertEqual({k: done["usage"][k] for k in ("input_tokens", "output_tokens", "total_tokens")}, {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
+        self.assertIsNone(done["usage"]["cache_write_tokens"])
+        case_id = engine.read_json(self.exp / "config.json")["cases"][0]["case_id"]
+        integrity = {(row["condition"], row["case_id"]): row["prompt_utf8_bytes"] for row in engine.read_json(self.exp / "input_integrity.json")["rows"]}
+        for letter in "ABC":
+            self.assertEqual(summary["conditions"][letter]["prompt_utf8_bytes_by_case"], {case_id: integrity[(letter, case_id)]})
+        self.assertGreater(summary["conditions"]["B"]["prompt_utf8_bytes_by_case"][case_id], summary["conditions"]["A"]["prompt_utf8_bytes_by_case"][case_id])
+        stopped = summary["conditions"][refused]
+        self.assertEqual((stopped["attempted"], stopped["finished"], stopped["completed"], stopped["api_turns"], stopped["usage_reported_slots"]), (1, 1, 0, 1, 0))
+        self.assertEqual(stopped["statuses"], {"refused": 1})
+        self.assertTrue(all(value is None for value in stopped["usage"].values()))
+        never = summary["conditions"][missing]
+        self.assertEqual((never["scheduled"], never["attempted"], never["finished"], never["api_turns"]), (1, 0, 0, 0))
+        # The summary names conditions and cases: it stays under admin and never enters the review folder.
+        review_files = {p.name for p in (self.exp / "review").rglob("*")}
+        self.assertNotIn("condition_summary.json", review_files)
+        for path in (self.exp / "review").rglob("*.json"):
+            self.assertNotIn(b"prompt_utf8_bytes", path.read_bytes())
+        # A started slot with an unreadable result is counted from its turn records, not re-sent.
+        (self.exp / "runs" / self.runs[1] / "result.json").write_text("{not json", encoding="utf-8")
+        turn = self.exp / "runs" / self.runs[1] / "turns/turn_00"
+        engine.write_json(turn / "attempt.json", {"offline_fixture_only": True})
+        again = review_export.summarize_conditions(self.exp)["conditions"][refused]
+        self.assertEqual((again["api_turns"], again["finished"], again["statuses"]), (1, 1, {"invalid_result": 1}))
+        self.paid.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

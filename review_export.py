@@ -32,6 +32,105 @@ EXECUTION_STATES.update({"http_error", "transport_error_outcome_unknown", "inter
                          "provider_incomplete", "provider_failed", "provider_cancelled", "provider_unknown"})
 EXECUTION_STATES.add("protocol_deviation")
 CONVERSION_STATES = {"ok", "partial", "failed", "empty"}
+CONDITIONS = ("A", "B", "C")
+USAGE_TOTALS = (("input_tokens", ("input_tokens",)), ("output_tokens", ("output_tokens",)), ("total_tokens", ("total_tokens",)),
+                ("cached_tokens", ("input_tokens_details", "cached_tokens")),
+                ("cache_write_tokens", ("input_tokens_details", "cache_write_tokens")),
+                ("uncached_tokens", ("input_tokens_details", "uncached_tokens")),
+                ("reasoning_tokens", ("output_tokens_details", "reasoning_tokens")))
+
+
+def _count(value):
+    return value if type(value) is int and value >= 0 else None
+
+
+def _nested(value, path):
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return value
+
+
+def _add(total, value):
+    return total if value is None else (total or 0) + value
+
+
+def summarize_conditions(experiment_dir):
+    """Aggregate realized requests, continuations, outcomes and token usage per condition.
+
+    The per-slot records in runs/<run_id>/result.json are the source; nothing is re-sent
+    or re-parsed. Administrator-only: the summary names conditions and cases.
+    """
+    experiment_dir = Path(experiment_dir)
+    schedule = _read_json(experiment_dir / "schedule.json")
+    runs = schedule.get("runs") if isinstance(schedule, dict) else None
+    if not isinstance(runs, list):
+        raise ValueError("schedule.json must contain a runs array")
+    prompt_bytes = {}
+    integrity_path = experiment_dir / "input_integrity.json"
+    if integrity_path.exists():
+        for row in _read_json(integrity_path).get("rows", []):
+            if isinstance(row, dict) and row.get("condition") in CONDITIONS and _count(row.get("prompt_utf8_bytes")) is not None:
+                prompt_bytes.setdefault(row["condition"], {})[str(row.get("case_id"))] = row["prompt_utf8_bytes"]
+    conditions = {}
+    for condition in CONDITIONS:
+        conditions[condition] = {"scheduled": 0, "attempted": 0, "finished": 0, "completed": 0, "statuses": {},
+                                 "api_turns": 0, "continuations": 0, "elapsed_seconds": 0.0, "usage_reported_slots": 0,
+                                 "usage": {name: None for name, _ in USAGE_TOTALS},
+                                 "prompt_utf8_bytes_by_case": prompt_bytes.get(condition, {})}
+    unassigned = 0
+    for run in runs:
+        condition = run.get("condition") if isinstance(run, dict) else None
+        run_id = run.get("run_id") if isinstance(run, dict) else None
+        if condition not in conditions or not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", run_id):
+            unassigned += 1
+            continue
+        entry = conditions[condition]
+        entry["scheduled"] += 1
+        run_dir = experiment_dir / "runs" / run_id
+        attempted = (run_dir / "attempt.json").exists()
+        entry["attempted"] += int(attempted)
+        result = None
+        if (run_dir / "result.json").exists():
+            try:
+                result = _read_json(run_dir / "result.json")
+            except (OSError, ValueError):
+                result = {"status": "invalid_result"}
+            if not isinstance(result, dict):
+                result = {"status": "invalid_result"}
+        turns = len(list((run_dir / "turns").glob("turn_*/attempt.json")))
+        api_turns = _count(result.get("api_turns")) if result else None
+        if api_turns is None:
+            api_turns = turns if turns else int(attempted)
+        entry["api_turns"] += api_turns
+        entry["continuations"] += max(0, api_turns - 1)
+        if result is None:
+            continue
+        status = result.get("status")
+        status = status if isinstance(status, str) and (status in EXECUTION_STATES or status == "invalid_result") else "unknown"
+        entry["finished"] += 1
+        entry["completed"] += int(status == "completed")
+        entry["statuses"][status] = entry["statuses"].get(status, 0) + 1
+        elapsed = result.get("elapsed_seconds")
+        if type(elapsed) in (int, float) and elapsed >= 0:
+            entry["elapsed_seconds"] = round(entry["elapsed_seconds"] + elapsed, 3)
+        usage = result.get("usage")
+        if isinstance(usage, dict):
+            entry["usage_reported_slots"] += 1
+            for name, path in USAGE_TOTALS:
+                entry["usage"][name] = _add(entry["usage"][name], _count(_nested(usage, path)))
+    summary = {"version": VERSION, "purpose": "Administrator-only per-condition totals from recorded slot results; not accuracy scores.",
+               "conditions": conditions, "runs_without_condition": unassigned}
+    manifest_path = experiment_dir / "manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = _read_json(manifest_path)
+            if isinstance(manifest, dict):
+                for key in ("study_role", "cases", "auto_continue_limit"):
+                    if key in manifest:
+                        summary[key] = manifest[key]
+        except (OSError, ValueError):
+            pass
+    return summary
 
 
 def _read_json(path):
@@ -307,7 +406,9 @@ def export_review(experiment_dir: Path, backend_dir: Path, schema_path: Path) ->
         administrator.append(audit)
     (review_dir / "index.html").write_text(_index_html(summaries), encoding="utf-8")
     _write_json(experiment_dir / "admin" / "review_export_audit.json", {"version": VERSION, "runs": administrator})
-    report = {"version": VERSION, "status": "completed", "review_slot_count": len(summaries), "available_geometry_count": sum(item["review_export_status"] == "available" for item in summaries), "review_directory": str(review_dir), "review_key": str(experiment_dir / "admin" / "review_key.json"), "summaries": summaries}
+    conditions = summarize_conditions(experiment_dir)
+    _write_json(experiment_dir / "admin" / "condition_summary.json", conditions)
+    report = {"version": VERSION, "status": "completed", "review_slot_count": len(summaries), "available_geometry_count": sum(item["review_export_status"] == "available" for item in summaries), "review_directory": str(review_dir), "review_key": str(experiment_dir / "admin" / "review_key.json"), "condition_summary": str(experiment_dir / "admin" / "condition_summary.json"), "conditions": conditions["conditions"], "summaries": summaries}
     _write_json(experiment_dir / "admin" / "review_export_report.json", report)
     return report
 

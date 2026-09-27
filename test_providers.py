@@ -224,6 +224,14 @@ class ProviderTests(unittest.TestCase):
         raw = anthropic_response()
         del raw["usage"]["output_tokens_details"]
         self.assertIsNone(p.parse_response("anthropic", encode(raw))["usage"]["output_tokens_details"]["reasoning_tokens"])
+        # Explicit null cache counters mean no cache activity, exactly like absent fields.
+        raw = anthropic_response()
+        raw["usage"].update({"cache_creation_input_tokens": None, "cache_read_input_tokens": None})
+        usage = p.parse_response("anthropic", encode(raw))["usage"]
+        self.assertEqual((usage["input_tokens"], usage["total_tokens"]), (100, 180))
+        self.assertEqual(usage["input_tokens_details"], {"cached_tokens": 0, "cache_write_tokens": 0, "uncached_tokens": 100})
+        raw["usage"]["cache_read_input_tokens"] = "30"
+        self.assertIsNone(p.parse_response("anthropic", encode(raw))["usage"]["input_tokens"])
 
     def test_incomplete_refused_unexpected_and_invalid_responses_never_continue(self):
         examples = []

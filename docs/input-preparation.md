@@ -42,4 +42,4 @@ The bundled common instruction (`resources/shared/minimal_v1/common_instruction.
 
 Use a new protocol identifier when changing the input presentation. For example, test a caption-only variant separately from a new section-crop variant. Apply each variant identically to both providers and all A/B/C conditions. Retain old prepared experiments and hashes.
 
-The included ontology was informed by development material. Mark cases used to develop it as `used_for_ontology_development: true`. Do not label such a case as held out. For a held-out study, prepare independent drawings and document how they were separated from ontology development.
+The included ontology was informed by development material. Mark cases used to develop it as `used_for_ontology_development: true`. Do not label such a case as held out. The flag is recorded with the study role in each experiment's `manifest.json`, in the batch record, and in the administrator condition summary, so a report can state which results are in-sample. For a held-out study, prepare independent drawings and document how they were separated from ontology development.
