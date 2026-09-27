@@ -31,7 +31,7 @@ py -3.9 -m venv .venv
 .\04_web_app.cmd
 ```
 
-The application normally opens at `http://127.0.0.1:8765`. If that port is occupied, it selects an available nearby port. The launcher also refuses to start a second instance while `webapp/runtime/server.json` records a running one. You can also start the server directly, but on Windows a second direct start can bind the same port instead of moving to the next one, so stop the running instance first:
+The application listens on the loopback address only and has no login: any program running under the same Windows account can reach it, including starting paid runs with saved keys or deleting them. Use it on a personal account, not a shared one. The application normally opens at `http://127.0.0.1:8765`. If that port is occupied, it selects an available nearby port. The launcher also refuses to start a second instance while `webapp/runtime/server.json` records a running one. You can also start the server directly, but on Windows a second direct start can bind the same port instead of moving to the next one, so stop the running instance first:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -X utf8 webapp/server.py --package . --port 8765 --open

@@ -87,4 +87,11 @@ def main():
     return 0
 
 if __name__=='__main__':
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        # Every failure is reported as JSON so a CI log or a Windows console shows one line, not a traceback.
+        print(json.dumps({'status':'failed','errors':[type(exc).__name__+': '+str(exc)]},indent=2))
+        raise SystemExit(1)

@@ -114,6 +114,8 @@ def validate_config(cfg):
         raise ValueError("Unrecognized configuration keys: " + str(sorted(set(cfg) - allowed)))
     if "input_protocol_version" in cfg:
         safe_id(cfg["input_protocol_version"])
+    if "version" in cfg and cfg["version"] != VERSION:
+        raise ValueError("Configuration version %r does not match this engine (%s)." % (cfg["version"], VERSION))
     for name in ("model", "model_version_note", "study_role"):
         if not isinstance(cfg.get(name), str) or not cfg[name].strip():
             raise ValueError("Missing string: " + name)
@@ -154,12 +156,9 @@ def validate_config(cfg):
         if not isinstance(case["images"], list) or not case["images"]:
             raise ValueError("Each case needs an ordered image list.")
     # Unsupported parameters are never silently dropped or changed after a failure.
-    if cfg.get("temperature") is not None and (
-            type(cfg["temperature"]) not in (int, float) or not (0 <= cfg["temperature"] <= 2)):
-        raise ValueError("temperature must be null or in [0, 2].")
-    if cfg.get("top_p") is not None and (
-            type(cfg["top_p"]) not in (int, float) or not (0 < cfg["top_p"] <= 1)):
-        raise ValueError("top_p must be null or in (0, 1].")
+    if cfg.get("temperature") is not None or cfg.get("top_p") is not None:
+        # The common protocol never sends sampling parameters; the keys stay accepted only as explicit null.
+        raise ValueError("temperature and top_p must be null: this protocol does not send them.")
     providers.validate_model_settings(cfg)
 
 
@@ -200,62 +199,68 @@ def prepare(config_path, experiment_dir):
     if not backend.is_file():
         raise ValueError("Missing geometry_backend.py")
     exp.mkdir(parents=True, exist_ok=False)
-    for folder in ("frozen/shared", "frozen/knowledge", "frozen/cases", "software/backend", "runs", "admin"):
-        (exp / folder).mkdir(parents=True, exist_ok=True)
-    for key, name in (("common_instruction", "common_instruction.md"), ("output_schema", "common_output.schema.json"),
-                      ("geometry_contract", "geometry_contract.md")):
-        shutil.copy2(resolve_input(base, cfg[key]), exp / "frozen/shared" / name)
-    alignment = build_knowledge(resolve_input(base, cfg["knowledge_source"]), exp / "frozen/knowledge")
-    normalized = copy.deepcopy(cfg)
-    normalized.update({"common_instruction": "frozen/shared/common_instruction.md",
-                       "output_schema": "frozen/shared/common_output.schema.json",
-                       "geometry_contract": "frozen/shared/geometry_contract.md",
-                       "knowledge_source": "frozen/knowledge/source_facts.json", "backend_dir": "software/backend"})
-    source_records = []
-    for original, case in zip(cfg["cases"], normalized["cases"]):
-        target = exp / "frozen/cases" / case["case_id"]
-        target.mkdir()
-        for key, name in (("scope", "scope.md"), ("text", "source_text.json"), ("provenance", "provenance.json")):
-            src = resolve_input(base, original[key])
-            shutil.copy2(src, target / name)
-            case[key] = (target / name).relative_to(exp).as_posix()
-            source_records.append({"original_path": str(src), "sha256": sha(src), "role": key})
-        case["images"] = []
-        for index, name in enumerate(original["images"]):
-            src = resolve_input(base, name)
-            if src.suffix.lower() not in IMAGE_MEDIA_TYPES:
-                raise ValueError("Use PNG/JPEG/WEBP image files.")
-            dest = target / ("image_%02d" % index + src.suffix.lower())
-            shutil.copy2(src, dest)
-            case["images"].append(dest.relative_to(exp).as_posix())
-            source_records.append({"original_path": str(src), "sha256": sha(src), "role": "image"})
-    for name in CODE_FILES:
-        shutil.copy2(Path(__file__).parent / name, exp / "software" / name)
-    shutil.copy2(backend, exp / "software/backend/geometry_backend.py")
-    write_json(exp / "config.json", normalized)
-    write_json(exp / "schedule.json", make_schedule(normalized))
-    write_json(exp / "admin/source_provenance.json", source_records)
-    integrity = input_integrity(exp, write_prompts=True)
-    write_json(exp / "input_integrity.json", integrity)
-    immutable = [exp / "config.json", exp / "schedule.json", exp / "input_integrity.json"]
-    immutable += sorted(p for tree in ("frozen", "software") for p in (exp / tree).rglob("*") if p.is_file())
-    manifest = {"version": VERSION, "created_utc": now(), "study_role": cfg["study_role"],
-                "cases": case_records(cfg),
-                "grader": "human only; operational checks are not accuracy scores",
-                "provider": cfg["provider"], "endpoint": ENDPOINTS[cfg["provider"]],
-                "retries_per_run": 0, "repair_calls": 0,
-                "auto_continue_limit": cfg["auto_continue_limit"],
-                "continuation_text": CONTINUATION_TEXT,
-                "continuation_policy": "Only explicit clarification; same slot, fixed reply, never repair model JSON",
-                "failure_policy": "HTTP/transport errors pause batch; never retry an attempted run",
-                "input_protocol_version": cfg.get("input_protocol_version", VERSION),
-                "postprocessing": "same geometry adapter for all conditions; near_rotation_so3_v1 corrects only bounded numeric rotation deviations and logs original/corrected matrices; no semantic, dimension, topology or schema repairs",
-                "formal_reasoner": False, "knowledge_alignment": alignment,
-                "model_version_note": cfg["model_version_note"],
-                "runtime": runtime_info(), "files": {p.relative_to(exp).as_posix(): sha(p) for p in immutable}}
-    write_json(exp / "manifest.json", manifest)
-    (exp / "manifest.sha256").write_text(sha(exp / "manifest.json") + "\n", encoding="ascii")
-    slots = len(read_json(exp / "schedule.json")["runs"])
+    try:
+        for folder in ("frozen/shared", "frozen/knowledge", "frozen/cases", "software/backend", "runs", "admin"):
+            (exp / folder).mkdir(parents=True, exist_ok=True)
+        for key, name in (("common_instruction", "common_instruction.md"), ("output_schema", "common_output.schema.json"),
+                          ("geometry_contract", "geometry_contract.md")):
+            shutil.copy2(resolve_input(base, cfg[key]), exp / "frozen/shared" / name)
+        alignment = build_knowledge(resolve_input(base, cfg["knowledge_source"]), exp / "frozen/knowledge")
+        normalized = copy.deepcopy(cfg)
+        normalized.update({"common_instruction": "frozen/shared/common_instruction.md",
+                           "output_schema": "frozen/shared/common_output.schema.json",
+                           "geometry_contract": "frozen/shared/geometry_contract.md",
+                           "knowledge_source": "frozen/knowledge/source_facts.json", "backend_dir": "software/backend"})
+        source_records = []
+        for original, case in zip(cfg["cases"], normalized["cases"]):
+            target = exp / "frozen/cases" / case["case_id"]
+            target.mkdir()
+            for key, name in (("scope", "scope.md"), ("text", "source_text.json"), ("provenance", "provenance.json")):
+                src = resolve_input(base, original[key])
+                shutil.copy2(src, target / name)
+                case[key] = (target / name).relative_to(exp).as_posix()
+                source_records.append({"original_path": str(src), "sha256": sha(src), "role": key})
+            case["images"] = []
+            for index, name in enumerate(original["images"]):
+                src = resolve_input(base, name)
+                if src.suffix.lower() not in IMAGE_MEDIA_TYPES:
+                    raise ValueError("Use PNG/JPEG/WEBP image files.")
+                dest = target / ("image_%02d" % index + src.suffix.lower())
+                shutil.copy2(src, dest)
+                case["images"].append(dest.relative_to(exp).as_posix())
+                source_records.append({"original_path": str(src), "sha256": sha(src), "role": "image"})
+        for name in CODE_FILES:
+            shutil.copy2(Path(__file__).parent / name, exp / "software" / name)
+        shutil.copy2(backend, exp / "software/backend/geometry_backend.py")
+        write_json(exp / "config.json", normalized)
+        write_json(exp / "schedule.json", make_schedule(normalized))
+        write_json(exp / "admin/source_provenance.json", source_records)
+        integrity = input_integrity(exp, write_prompts=True)
+        write_json(exp / "input_integrity.json", integrity)
+        immutable = [exp / "config.json", exp / "schedule.json", exp / "input_integrity.json"]
+        immutable += sorted(p for tree in ("frozen", "software") for p in (exp / tree).rglob("*") if p.is_file())
+        manifest = {"version": VERSION, "created_utc": now(), "study_role": cfg["study_role"],
+                    "cases": case_records(cfg),
+                    "grader": "human only; operational checks are not accuracy scores",
+                    "provider": cfg["provider"], "endpoint": ENDPOINTS[cfg["provider"]],
+                    "retries_per_run": 0, "repair_calls": 0,
+                    "auto_continue_limit": cfg["auto_continue_limit"],
+                    "continuation_text": CONTINUATION_TEXT,
+                    "system_text": providers.SYSTEM_TEXT,
+                    "continuation_policy": "Only explicit clarification; same slot, fixed reply, never repair model JSON",
+                    "failure_policy": "HTTP/transport errors pause batch; never retry an attempted run",
+                    "input_protocol_version": cfg.get("input_protocol_version", VERSION),
+                    "postprocessing": "same geometry adapter for all conditions; near_rotation_so3_v1 corrects only bounded numeric rotation deviations and logs original/corrected matrices; no semantic, dimension, topology or schema repairs",
+                    "formal_reasoner": False, "knowledge_alignment": alignment,
+                    "model_version_note": cfg["model_version_note"],
+                    "runtime": runtime_info(), "files": {p.relative_to(exp).as_posix(): sha(p) for p in immutable}}
+        write_json(exp / "manifest.json", manifest)
+        (exp / "manifest.sha256").write_text(sha(exp / "manifest.json") + "\n", encoding="ascii")
+        slots = len(read_json(exp / "schedule.json")["runs"])
+    except BaseException:
+        # Nothing was sent anywhere; a half-built experiment folder would only block a retry.
+        shutil.rmtree(exp, ignore_errors=True)
+        raise
     return {"experiment": str(exp), "scheduled_calls": slots, "scheduled_slots": slots,
             "max_api_turns": slots * (1 + cfg["auto_continue_limit"]),
             "integrity": integrity["passed"], "status": "prepared_no_api_calls"}
@@ -357,7 +362,7 @@ def input_integrity(exp, write_prompts=False):
             prompt = payload_prompt(payload)
             if write_prompts:
                 path = exp / "frozen/cases" / case["case_id"] / (condition + "_prompt.txt")
-                path.write_text(prompt, encoding="utf-8")
+                path.write_bytes(prompt.encode("utf-8"))  # never CRLF-translated: the file hash must equal prompt_sha256
             rows.append({"case_id": case["case_id"], "condition": condition,
                          "payload_sha256": digest(dumps(payload).encode("utf-8")),
                          "prompt_sha256": digest(prompt.encode("utf-8")), "prompt_utf8_bytes": len(prompt.encode("utf-8")),

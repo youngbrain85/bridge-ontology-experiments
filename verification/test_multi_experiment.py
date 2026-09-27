@@ -492,5 +492,37 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(engine.read_json(target), {"status": "completed"})
 
 
+    def test_22_failed_preparation_removes_its_folder_and_frozen_prompts_hash_exactly(self):
+        exp = self.prepare()
+        manifest = engine.read_json(exp / "manifest.json")
+        self.assertEqual(manifest["system_text"], providers.SYSTEM_TEXT)
+        self.assertEqual(manifest["continuation_text"], engine.CONTINUATION_TEXT)
+        for row in engine.read_json(exp / "input_integrity.json")["rows"]:
+            path = exp / "frozen/cases" / row["case_id"] / (row["condition"] + "_prompt.txt")
+            self.assertEqual(engine.digest(path.read_bytes()), row["prompt_sha256"])
+            self.assertEqual(len(path.read_bytes()), row["prompt_utf8_bytes"])
+        # A failure after the folder exists rolls the folder back so the same name can be retried.
+        broken = self.root / "broken_facts.json"
+        broken.write_text("{not json", encoding="utf-8")
+        with self.assertRaises(Exception):
+            self.prepare(knowledge_source=str(broken))
+        self.assertFalse((self.root / ("exp_%02d" % self.counter)).exists())
+        # A pre-existing folder is never touched.
+        with self.assertRaises(FileExistsError):
+            engine.prepare(self.root / ("config_%02d.json" % (self.counter - 1)), exp)
+        self.assertTrue((exp / "manifest.json").is_file())
+
+    def test_23_configuration_version_and_sampling_keys_are_checked_before_any_folder_exists(self):
+        with self.assertRaisesRegex(ValueError, "does not match this engine"):
+            self.prepare(version="0.0.1")
+        self.assertFalse((self.root / ("exp_%02d" % self.counter)).exists())
+        with self.assertRaisesRegex(ValueError, "temperature and top_p must be null"):
+            self.prepare(temperature=0.2)
+        with self.assertRaisesRegex(ValueError, "temperature and top_p must be null"):
+            self.prepare(top_p=0.9)
+        exp = self.prepare(temperature=None, top_p=None)
+        self.assertTrue((exp / "manifest.json").is_file())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

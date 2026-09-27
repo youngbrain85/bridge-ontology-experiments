@@ -22,15 +22,11 @@ GEOMETRY_FILES = ("model.glb", "model.dxf", "model.obj")
 EXECUTION_STATES = {
     "completed", "failed", "pending", "running", "skipped", "cancelled", "error", "incomplete",
     "interrupted_outcome_unknown", "http_error", "transport_error_outcome_unknown",
-    "invalid_api_response", "provider_incomplete", "provider_failed", "refused",
-    "unexpected_tool_or_output", "invalid_model_json", "protocol_deviation",
+    "invalid_api_response", "provider_incomplete", "provider_failed", "provider_cancelled", "provider_unknown",
+    "refused", "unexpected_tool_or_output", "invalid_model_json", "protocol_deviation",
     "clarification_requested", "clarification_limit_reached", "stopped_before_continuation",
     "interrupted_before_continuation",
 }
-EXECUTION_STATES.update({"http_error", "transport_error_outcome_unknown", "interrupted_outcome_unknown",
-                         "invalid_api_response", "invalid_model_json", "refused", "unexpected_tool_or_output",
-                         "provider_incomplete", "provider_failed", "provider_cancelled", "provider_unknown"})
-EXECUTION_STATES.add("protocol_deviation")
 CONVERSION_STATES = {"ok", "partial", "failed", "empty"}
 CONDITIONS = ("A", "B", "C")
 USAGE_TOTALS = (("input_tokens", ("input_tokens",)), ("output_tokens", ("output_tokens",)), ("total_tokens", ("total_tokens",)),

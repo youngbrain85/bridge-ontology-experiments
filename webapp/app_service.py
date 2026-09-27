@@ -18,6 +18,12 @@ from credential_store import CredentialStore
 TOKEN_KEYS = ('input_tokens', 'output_tokens', 'cached_tokens', 'reasoning_tokens')
 COUNT_KEYS = ('scheduled', 'attempted', 'finished', 'json_completed', 'failures', 'remaining', 'api_calls', 'continuations')
 CONDITION_LABELS = {'A': 'A — No added knowledge', 'B': 'B — Prose knowledge', 'C': 'C — Structured ontology'}
+PAUSE_MESSAGES = {
+    'stopped_after_current_request': 'Stopped at your request after the current response. Remaining slots are preserved; run again to continue.',
+    'paused_by_call_limit': 'Paused after reaching the request limit you set. Remaining slots are preserved; run again to continue.',
+    'paused_after_transport_failure': 'Paused after a transport failure. The last request may or may not have reached the provider; its slot is recorded as outcome unknown and is never re-sent. Check the connection, then run again for the remaining slots.',
+    'paused_after_model_change': 'Paused because the provider returned a different model during this batch (protocol deviation). Preserve the original records and prepare a new batch.',
+}
 
 
 def read_condition_document(path):
@@ -55,6 +61,8 @@ def condition_info(row=None):
 class Application:
     def __init__(self, package, app_dir=None, jobs_dir=None, credential_store=None):
         self.package = Path(package).resolve()
+        # The path as the launcher passed it (absolute, not resolved): subst or mapped drives resolve differently in PowerShell.
+        self.package_as_given = str(Path(package).absolute())
         self.app_dir = Path(app_dir or Path(__file__).parent).resolve()
         if not (self.package / 'experiment.py').is_file():
             raise ValueError('Experiment package not found')
@@ -492,7 +500,7 @@ class Application:
             with self.lock:
                 job['status'] = 'paused' if success and paused else 'completed' if success else 'failed'
                 job['finished_utc'] = now()
-                job['message'] = ('Stopped with remaining slots preserved. Check the generated review files.' if paused else 'Task completed.') if success else final.get('error', 'The task could not be completed.')
+                job['message'] = (PAUSE_MESSAGES.get(phase, 'Stopped with remaining slots preserved. Check the generated review files.') if paused else 'Task completed.') if success else final.get('error', 'The task could not be completed.')
                 if result.get('conversion_error'):
                     job['message'] += ' Some 3D conversions could not be completed. Use the conversion button to check their status.'
                 if job['action'] == 'check':

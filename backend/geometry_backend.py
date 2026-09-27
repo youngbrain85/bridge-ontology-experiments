@@ -461,6 +461,14 @@ def _reject_nonfinite(token):
     raise GeometryInputError(f"JSON contains nonfinite number token: {token}")
 
 
+def _finite_float(token):
+    # 1e400 is valid JSON syntax but parses to infinity; reject it here so the report is written instead of a crash.
+    value = float(token)
+    if not math.isfinite(value):
+        raise GeometryInputError(f"JSON number is out of finite range: {token}")
+    return value
+
+
 def _reject_duplicate_keys(pairs):
     value = {}
     for key, item in pairs:
@@ -485,7 +493,7 @@ def convert_model(input_path, output_dir, schema_path=None) -> Dict[str, Any]:
         "global_errors": [], "frame_errors": [], "entities": [], "exports": {},
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    protected = [name for name in ("model.glb", "model.dxf", "model.obj", "conversion_report.json", "model_input.json") if (output_dir / name).exists()]
+    protected = [name for name in ("model.glb", "model.dxf", "model.obj", "conversion_report.json", "model_input.json", "unknown_review.json", "dxf_layer_map.json") if (output_dir / name).exists()]
     if protected:
         report["global_errors"].append("Output directory already contains run artifacts; use a new directory: " + ", ".join(protected))
         return report  # Never overwrite a prior run's report or files.
@@ -493,7 +501,7 @@ def convert_model(input_path, output_dir, schema_path=None) -> Dict[str, Any]:
         data = input_path.read_bytes()
         report["input_sha256"] = hashlib.sha256(data).hexdigest()
         (output_dir / "model_input.json").write_bytes(data)
-        model = json.loads(data.decode("utf-8-sig"), parse_constant=_reject_nonfinite, object_pairs_hook=_reject_duplicate_keys)
+        model = json.loads(data.decode("utf-8-sig"), parse_constant=_reject_nonfinite, parse_float=_finite_float, object_pairs_hook=_reject_duplicate_keys)
         if not isinstance(model, dict) or not isinstance(model.get("entities"), list):
             raise GeometryInputError("model must be an object containing an entities array")
         if schema_path is not None:
@@ -591,7 +599,9 @@ def main():
     parser.add_argument("--schema", help="Optional generic model JSON Schema")
     args = parser.parse_args()
     report = convert_model(args.input, args.output, args.schema)
-    print(json.dumps({"status": report["status"], "mesh_count": report.get("mesh_count", 0), "global_errors": report["global_errors"], "report": str(Path(args.output).resolve() / "conversion_report.json")}, ensure_ascii=False))
+    report_path = Path(args.output).resolve() / "conversion_report.json"
+    print(json.dumps({"status": report["status"], "mesh_count": report.get("mesh_count", 0), "global_errors": report["global_errors"],
+                      "report": str(report_path) if report_path.is_file() and "input_sha256" in report else None}, ensure_ascii=False))
     return 0 if report["status"] == "ok" else 2 if report["status"] == "partial" else 3
 
 

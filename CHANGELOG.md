@@ -1,5 +1,20 @@
 # Changelog
 
+## Cleanup of remaining low-severity review items — 2026-09-27
+
+- A preparation that fails after the experiment folder was created now removes that folder, so the same name can be retried instead of failing forever with "already exists". A folder that existed before is never touched.
+- Frozen `*_prompt.txt` files are written byte-exactly on every platform. On Windows they were CRLF-translated, so their file hash differed from the recorded `prompt_sha256` and the common fingerprint differed between operating systems.
+- The manifest records the engine's fixed system text next to the continuation text, so two batches whose engine texts differ can be told apart without diffing the frozen `software/` copies.
+- `validate_config` rejects a `version` that does not match the engine and rejects non-null `temperature`/`top_p` directly; the previous range checks were unreachable because the provider layer refused any non-null value anyway.
+- The job message after a pause now says why: stopped at your request, paused by the request limit, paused after a transport failure (outcome of the last request unknown, never re-sent), or paused after a returned-model change. The condition table shows the recorded HTTP status of a run.
+- The health endpoint also returns the package path exactly as the launcher passed it, and the launcher accepts either form, so a `subst` or mapped drive no longer makes it start a second hidden server.
+- On non-Windows hosts the credential store reports the platform limitation instead of a generic read, save or delete failure.
+- The geometry backend writes a failed conversion report for a JSON number outside the finite range (such as `1e400`) instead of crashing without a report, refuses an output directory that already holds `unknown_review.json` or `dxf_layer_map.json`, and its CLI summary no longer names a report file that was not written.
+- The backend tests use the system temporary directory instead of a `rotation_test_artifacts` folder next to the repository.
+- The release manifest reads the engine, web app, backend and input protocol versions from their sources instead of hardcoding them, and `verify_release.py` reports any unexpected failure as a one-line JSON status instead of a traceback.
+- Dead code removed: an unused import in `batch_protocol.py`, an unused `.gitignore` pattern, duplicate execution-state additions in `review_export.py`, and the unreachable `image/gif` media type.
+- README states the single-user trust boundary: the application has no login and any process under the same account can reach it.
+
 ## Per-condition totals, case flag records, and robustness fixes — 2026-09-26
 
 - The review export now writes `admin/condition_summary.json` and returns the same `conditions` block in its report: per condition, the scheduled, attempted, and finished slots, outcome counts, realized `api_turns` and continuations, elapsed time, token usage by category (input, output, total, cached, cache write, uncached, reasoning), and the frozen prompt size in bytes before any call. The totals come only from recorded slot results; nothing is re-sent. The summary names conditions and cases, so it stays under `admin/` and never enters the review folder. The web application shows the same per-condition counts and tokens on each model card.

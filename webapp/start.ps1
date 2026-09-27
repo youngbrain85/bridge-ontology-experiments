@@ -20,7 +20,9 @@ function Get-LocalApp {
         $taskInfo = Get-Content -LiteralPath $taskInfoPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($taskInfo.url -notmatch '^http://127\.0\.0\.1:\d{1,5}$') { return $null }
         $taskHealth = Invoke-RestMethod -Uri ($taskInfo.url + '/api/health') -TimeoutSec 2
-        if ($taskHealth.app -eq 'bridge-ontology-multi-model-app' -and $taskHealth.package_root -eq $taskPackagePath) { return $taskInfo }
+        $taskWanted = $taskPackagePath.TrimEnd('\')
+        $taskRoots = @($taskHealth.package_root, $taskHealth.package_root_as_given) | Where-Object { $_ } | ForEach-Object { ([string]$_).TrimEnd('\') }
+        if ($taskHealth.app -eq 'bridge-ontology-multi-model-app' -and ($taskRoots -contains $taskWanted)) { return $taskInfo }
     } catch { return $null }
     return $null
 }

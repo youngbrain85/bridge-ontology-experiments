@@ -23,7 +23,7 @@ SYSTEM_TEXT = "Use only this request's supplied material. Return one JSON object
 ENDPOINTS = {"openai": "https://api.openai.com/v1/responses", "anthropic": "https://api.anthropic.com/v1/messages"}
 ANTHROPIC_VERSION = "2023-06-01"
 CATALOG_PATH = Path(__file__).with_name("model_catalog.json")
-IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
 
 def catalog():
