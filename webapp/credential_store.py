@@ -162,6 +162,8 @@ class CredentialStore:
             if len(encrypted) > MAX_FILE_BYTES:
                 raise UserError(ERROR_READ, 409)
             return _decrypt(provider, encrypted)
+        except UserError:
+            raise
         except Exception:
             raise UserError(ERROR_READ, 409) from None
 
@@ -214,6 +216,8 @@ class CredentialStore:
             for provider, temporary in staged:
                 destination, _ = self._path(provider)
                 os.replace(temporary, destination)
+        except UserError:
+            raise
         except Exception:
             raise UserError(ERROR_SAVE, 409) from None
         finally:
@@ -235,5 +239,7 @@ class CredentialStore:
             path, exists = self._path(provider)
             if exists:
                 path.unlink()
+        except UserError:
+            raise
         except Exception:
             raise UserError(ERROR_DELETE, 409) from None

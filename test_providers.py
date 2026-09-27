@@ -181,6 +181,14 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(manual["thinking"], {"type": "enabled", "budget_tokens": 2048})
         self.assertEqual(set(manual), {"model", "system", "messages", "max_tokens", "stream", "thinking"})
 
+    def test_only_engine_media_types_are_accepted(self):
+        prompt = "Offline media type check"
+        for media_type in ("image/png", "image/jpeg", "image/webp"):
+            p.build_request(settings(), prompt, [{"media_type": media_type, "data": IMAGE["data"]}])
+        for media_type in ("image/gif", "image/bmp", "text/plain"):
+            with self.assertRaises(ValueError):
+                p.build_request(settings(), prompt, [{"media_type": media_type, "data": IMAGE["data"]}])
+
     def test_openai_continuation_preserves_encrypted_output_and_does_not_mutate(self):
         initial = p.build_request(settings(), "Initial independent prompt", [IMAGE])
         raw = openai_response()

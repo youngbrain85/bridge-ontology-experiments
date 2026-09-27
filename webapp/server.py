@@ -71,7 +71,7 @@ def create_server(app, port=0):
                 self.guard_host()
                 path, query = self.parsed()
                 if path == '/api/health':
-                    return self.send_body(200, {'status': 'ok', 'app': APP_ID, 'version': VERSION, 'package_root': str(app.package)})
+                    return self.send_body(200, {'status': 'ok', 'app': APP_ID, 'version': VERSION, 'package_root': str(app.package), 'package_root_as_given': app.package_as_given})
                 if path == '/api/bootstrap':
                     return self.send_body(200, app.bootstrap())
                 if path == '/api/status':

@@ -58,9 +58,7 @@ def model(entities, frames=None):
 
 class RotationPrecisionTests(unittest.TestCase):
     def conversion(self, value, validate_schema=True, minimal_schema=False):
-        scratch = Path(__file__).resolve().parents[2] / "rotation_test_artifacts"
-        scratch.mkdir(exist_ok=True)
-        temporary = tempfile.TemporaryDirectory(prefix="synthetic_", dir=str(scratch))
+        temporary = tempfile.TemporaryDirectory(prefix="rotation_precision_")
         self.addCleanup(temporary.cleanup)
         directory = Path(temporary.name)
         source = directory / "input.json"
@@ -244,6 +242,32 @@ class RotationPrecisionTests(unittest.TestCase):
         self.assertEqual(report["rotation_correction_count"], 14)
         self.assertEqual(report["frame_errors"], [])
         self.assertEqual(sum(r["target"] == "frame" for r in report["rotation_corrections"]), 3)
+
+
+    def test_out_of_range_numbers_and_sidecar_files_produce_a_report_not_a_crash(self):
+        entity = box()
+        entity["label"] = 1e400  # valid JSON syntax; float('inf') after parsing
+        source_text = json.dumps(model([entity]), ensure_ascii=False).replace("Infinity", "1e400")
+        temporary = tempfile.TemporaryDirectory(prefix="rotation_precision_")
+        self.addCleanup(temporary.cleanup)
+        directory = Path(temporary.name)
+        source = directory / "input.json"
+        source.write_text(source_text, encoding="utf-8")
+        self.assertIn("1e400", source_text)
+        report = convert_model(source, directory / "converted", None)
+        self.assertEqual(report["status"], "failed")
+        self.assertTrue(any("finite range" in error for error in report["global_errors"]), report["global_errors"])
+        self.assertTrue((directory / "converted/conversion_report.json").is_file())
+        # Sidecar files from a previous run protect the directory exactly like the geometry files do.
+        for name in ("unknown_review.json", "dxf_layer_map.json"):
+            protected = directory / ("protected_" + name)
+            protected.mkdir()
+            (protected / name).write_text("{}", encoding="utf-8")
+            refused = convert_model(source, protected, None)
+            self.assertEqual(refused["status"], "failed")
+            self.assertTrue(any(name in error for error in refused["global_errors"]), refused["global_errors"])
+            self.assertFalse((protected / "conversion_report.json").exists())
+            self.assertFalse((protected / "model_input.json").exists())
 
 
 if __name__ == "__main__":

@@ -37,4 +37,3 @@ node_modules/
 Thumbs.db
 *.tmp
 verification/offline_*/
-verification/credential_*/

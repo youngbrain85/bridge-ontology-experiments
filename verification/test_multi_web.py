@@ -63,6 +63,7 @@ class FakeProcess:
         self.stdin = Sink()
         self.release = threading.Event()
         self.failed = failed
+        self.outcome = {"status": "all_slots_attempted"}
         self.stdout = self.lines()
         self.returncode = None
         self.job_dir = Path(args[args.index("--job-dir") + 1])
@@ -71,7 +72,7 @@ class FakeProcess:
         self.release.wait(4)
         if not self.stdin.closed:
             raise AssertionError("Worker stdin was not closed")
-        result = {"ok": not self.failed, "result": {"status": "all_slots_attempted"}}
+        result = {"ok": not self.failed, "result": dict(self.outcome)}
         if self.failed:
             result = {"ok": False, "error": "Offline model failure"}
         local_common.write_json(self.job_dir / "result.json", result)
@@ -479,6 +480,47 @@ class MultiWebTests(unittest.TestCase):
         self.assertEqual((data["totals"]["api_calls"], data["totals"]["input_tokens"], data["totals"]["scheduled"]), (3, 100, 2))
         self.assertEqual(self.request("GET", "/api/bootstrap")[0], 200)
         self.popen.assert_not_called()
+
+
+    def test_17_pause_reasons_are_distinguished_in_the_job_message(self):
+        self.passed()
+        expected = {
+            "stopped_after_current_request": ("paused", "Stopped at your request"),
+            "paused_by_call_limit": ("paused", "request limit"),
+            "paused_after_transport_failure": ("paused", "transport failure"),
+            "paused_after_model_change": ("paused", "protocol deviation"),
+            "all_slots_attempted": ("completed", "Task completed."),
+        }
+        for phase, (state, fragment) in expected.items():
+            with self.subTest(phase=phase):
+                before = len(self.processes)
+                status, _, body = self.request("POST", "/api/run", {"batch_id": "fixture", "keys": dict(KEYS), "max_new_slots": 1})
+                self.assertEqual(status, 202, body)
+                job_ids = json.loads(body)["job_ids"]
+                self.assertTrue(self.wait_for(lambda: len(self.processes) == before + len(job_ids)))
+                for process in self.processes[before:]:
+                    process.outcome = {"status": phase, "new_calls": 1}
+                    process.release.set()
+                self.assertTrue(self.wait_for(lambda: not self.app.is_busy()))
+                for job_id in job_ids:
+                    recorded = self.app.jobs[job_id]
+                    self.assertEqual(recorded["status"], state)
+                    self.assertIn(fragment, recorded["message"])
+                    self.assertNotIn("MUST_NOT_PERSIST", json.dumps(recorded))
+
+    @unittest.skipIf(sys.platform == "win32", "The platform message is only reachable without DPAPI")
+    def test_18_real_store_reports_the_platform_limit_instead_of_a_read_or_save_failure(self):
+        import credential_store
+        store = credential_store.CredentialStore(self.root / "store")
+        self.assertIsNone(store.get("openai"))
+        (self.root / "store").mkdir()
+        (self.root / "store/openai.dpapi").write_bytes(b"OFFLINE_NOT_A_REAL_BLOB")
+        for call in (lambda: store.get("openai"), lambda: store.save_many({"openai": KEYS["openai"]}), lambda: store.delete("openai")):
+            with self.assertRaises(local_common.UserError) as caught:
+                call()
+            self.assertEqual(caught.exception.message, credential_store.ERROR_PLATFORM)
+        self.assertEqual(store.status()["openai"], {"saved": True, "available": False, "error": credential_store.ERROR_PLATFORM})
+        self.assertTrue((self.root / "store/openai.dpapi").is_file())
 
 
 class WorkerAndBatchTests(unittest.TestCase):

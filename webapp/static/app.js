@@ -548,7 +548,7 @@ function renderConditionTable() {
       const label = conditionLabel(row), tr = document.createElement('tr');
       if (label === 'Condition unknown') unknown++;
       const condition = el('td', 'condition-cell'); condition.append(el('span', `condition-label${label === 'Condition unknown' ? ' unknown-condition' : ''}`, label));
-      const stages = [statusName(row.execution_status || row.status), row.conversion_status ? conversionName(row.conversion_status) : null].filter(Boolean).join(' · ');
+      const stages = [statusName(row.execution_status || row.status), row.conversion_status ? conversionName(row.conversion_status) : null, Number.isInteger(row.http_status) ? `HTTP ${row.http_status}` : null].filter(Boolean).join(' · ');
       tr.append(el('td', '', modelLabel(model.experiment)), el('td', 'review-id-cell', row.review_id || 'No review ID'), condition, el('td', '', row.repetition ?? '—'), el('td', '', row.case_id || '—'), el('td', '', stages), el('td', 'run-id-cell', row.run_id || '—'));
       fragment.append(tr);
     }
